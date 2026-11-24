@@ -1,17 +1,14 @@
 # ClipFlow
 
-Cloud-first AI content production and campaign automation. Implementation is in progress in Codex Cloud; this initialization commit is not a deployed product.
+ClipFlow is an AI Content Autopilot under development. This milestone implements the CPU clip renderer.
 
-## Architecture constraints
+Run the media checks from a Codex Cloud checkout or from GitHub Actions. The cloud image must provide Python 3, FFmpeg, FFprobe, libx264, libass, and DejaVu Sans.
 
-- Develop, install dependencies, build, and test only in cloud environments.
-- Source in GitHub; automated checks and approved deployments through GitHub Actions.
-- Application, persistent scheduler, background workers, and FFmpeg run remotely.
-- Supabase authentication/PostgreSQL and private Cloudflare R2 media storage.
-- Browser-direct signed uploads, streamed previews, explicit downloads only.
-- No founder-local dependency installation, Docker Desktop, AI models, or media caches.
-- Enforce spending limits, storage quotas, configurable retention, and temporary-file cleanup.
-- EUR 15–50 initial monthly infrastructure/API budget is a target to validate.
-- Paid services require explicit founder approval.
+```sh
+python3 -m unittest discover -s tests -v
+python3 -m clipflow source.mp4 clip.mp4 --start 10 --end 30 --captions captions.json
+```
 
-Verified functionality, test results, deployment instructions, environment variables, costs, and external blockers will be documented as implementation proceeds. Codex is the development tool, not the production runtime.
+Caption input is a JSON array with `start` and `end` in source-relative seconds and a `text` string on each entry. Use authorized media staged on the cloud worker. The command writes an H.264 MP4 to the cloud filesystem and reports duration, dimensions, and bytes.
+
+See [build status](BUILD_STATUS.md) and [architecture](ARCHITECTURE.md).
