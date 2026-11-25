@@ -94,6 +94,22 @@ async function main() {
     assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
     await mobile.screenshot({path: join(evidence, 'owner-mobile.png'), fullPage: true})
 
+    const planner = desktop.locator('#campaign-form')
+    await planner.getByLabel('Name').fill('Synthetic release')
+    await planner.getByLabel('Content goal').fill('Post a short teaser using the fixture')
+    await planner.getByRole('button', {name: 'Create plan'}).click()
+    await desktop.getByRole('button', {name: 'Approve'}).click()
+    const campaign = desktop.locator('#campaign-list article')
+    await campaign.getByLabel('Manual publishing time').fill('2020-01-01T12:00')
+    await campaign.getByRole('button', {name: 'Schedule manual handoff'}).click()
+    await desktop.getByRole('button', {name: 'Mark handed off'}).waitFor()
+    await campaign.getByRole('button', {name: 'Pause'}).click()
+    await desktop.locator('#publication-list').getByText(/on hold/).waitFor()
+    await campaign.getByRole('button', {name: 'Resume'}).click()
+    await desktop.getByRole('button', {name: 'Mark handed off'}).click()
+    await desktop.locator('#publication-list').getByText(/handed off/).waitFor()
+    await desktop.locator('#campaigns').screenshot({path: join(evidence, 'owner-campaigns.png')})
+
     const body = await readFile(source)
     const bad = await fetch(base + '/api/jobs', {
       method: 'POST', body,
@@ -104,7 +120,7 @@ async function main() {
     await desktop.getByText('Source or clip could not be processed. Check the video and clip range.').waitFor()
     const report = '# ClipFlow browser evidence\n\nSynthetic source only. Verified actual FFmpeg rendering, ' +
       'browser closure before worker start, job persistence across web restart, 720 × 1280 MP4 playback, ' +
-      '206 byte-range streaming, explicit download control, mobile layout and a visible failed job.\n'
+      '206 byte-range streaming, explicit download control, mobile layout, campaign approval, pause/resume, manual publishing handoff and a visible failed job.\n'
     await writeFile(join(evidence, 'verification.md'), report)
     console.log(report)
   } finally {

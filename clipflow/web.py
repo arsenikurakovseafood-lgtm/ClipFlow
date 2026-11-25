@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from clipflow.campaigns import Campaigns, Conflict
 from clipflow.queue import Limit, Queue
 from clipflow.render import MAX_OUTPUT_BYTES
 
@@ -42,10 +43,13 @@ class OwnerAPI(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlsplit(self.path)
         files = {'/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'),
-                 '/app.css': ('app.css', 'text/css')}
+                 '/app.css': ('app.css', 'text/css'),
+                 '/campaigns.js': ('campaigns.js', 'text/javascript')}
         if url.path in files:
             name, mime = files[url.path]
             return self.reply(200, (WEB / name).read_bytes(), mime + '; charset=utf-8')
+        if url.path == '/api/campaigns':
+            return self.reply(200, self.server.campaigns.snapshot())
         jobs = self.server.queue.all()
         if url.path == '/api/jobs':
             return self.reply(200, [{k: v for k, v in job.items() if k != 'lease_token'} for job in jobs])
@@ -96,7 +100,39 @@ class OwnerAPI(BaseHTTPRequestHandler):
                 self.wfile.write(block)
                 remaining -= len(block)
 
+    def campaign_request(self):
+        if self.headers.get('Sec-Fetch-Site') not in (None, 'same-origin'):
+            return self.reply(403, {'error': 'Cross-origin request refused'})
+        if self.headers.get_content_type() != 'application/json' or self.headers.get('Transfer-Encoding'):
+            return self.reply(415, {'error': 'JSON required'})
+        try:
+            size = int(self.headers.get('Content-Length', '0'))
+            if not 0 < size <= 8192:
+                raise ValueError('Invalid request size')
+            data = json.loads(self.rfile.read(size))
+            if not isinstance(data, dict):
+                raise ValueError('Expected an object')
+            if self.path == '/api/campaigns':
+                return self.reply(201, {'id': self.server.campaigns.create(data)})
+            match = re.fullmatch(r'/api/campaigns/([0-9a-f]{32})/(approve|pause|resume|stop|schedule)', self.path)
+            post = re.fullmatch(r'/api/manual-posts/([0-9a-f]{32})/handoff', self.path)
+            if post:
+                self.server.campaigns.complete(post[1])
+            elif not match:
+                return self.reply(404, {'error': 'Item unavailable'})
+            elif match[2] == 'schedule':
+                self.server.campaigns.schedule(match[1], data)
+            else:
+                self.server.campaigns.transition(match[1], match[2])
+            return self.reply(200, {'ok': True})
+        except Conflict as error:
+            return self.reply(409, {'error': str(error)})
+        except (ValueError, TimeoutError) as error:
+            return self.reply(400, {'error': str(error)})
+
     def do_POST(self):
+        if self.path.startswith(('/api/campaigns', '/api/manual-posts')):
+            return self.campaign_request()
         if self.path != '/api/jobs':
             return self.reply(404, {'error': 'Item unavailable'})
         # Cross-site forms cannot produce the required custom headers.
@@ -164,6 +200,7 @@ def main():
     server = ThreadingHTTPServer((args.bind, args.port), OwnerAPI)
     server.root = args.root.resolve()
     server.queue = Queue(server.root / 'jobs.sqlite3')
+    server.campaigns = Campaigns(server.queue)
     server.serve_forever()
 
 

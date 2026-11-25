@@ -13,3 +13,9 @@ The browser can upload an authorized file to temporary Cloud storage, queue proc
 Cloud Chromium verified browser upload, closing the submitting tab, reopening the dashboard, playback of a 4-second 720 × 1280 H.264 MP4, byte-range streaming, and layout at 390 pixels. Four Python tests cover subtitle timing, real encoding, concurrent budget reservation, idempotency, and stale lease recovery across queue instances. GitHub Actions is configured to run the Python tests when GitHub delivery becomes available.
 
 No authenticated hosted HTTP preview port was configured during verification. GitHub Actions runs the repeatable browser test and attaches synthetic demo screenshots. Production Supabase Auth/Postgres, direct signed R2 upload and preview, transcription, retention and orphan sweeping, and always-on deployment are pending.
+
+## Campaign workflow update
+
+Owner Studio now persists reviewed campaign drafts with a goal, channel, cadence, duration, and budget target. Approval is required before a ready clip can be added to the manual queue. Pausing holds outstanding items, resuming restores their scheduled or due status, and stopping cancels outstanding handoffs. Completed handoffs are evidence of owner action only. Nothing is sent to platform APIs. The cadence and budget are reviewed planning values. The current campaign form uses rule-based counts and manual setup.
+
+A Supabase migration prepares tenant-scoped campaign data and legal state transitions. The R2 media adapter prepares scoped signed PUT/GET requests and object metadata checks. The demo remains on SQLite and cloud scratch storage. Apply and verify the migration in an authorized Supabase project and run live R2 browser CORS, size enforcement, and conditional reads before changing the demo backend.

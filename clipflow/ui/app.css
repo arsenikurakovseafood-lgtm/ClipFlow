@@ -44,3 +44,21 @@ li button{background:var(--surface);color:inherit;border:1px solid var(--edge);b
 footer{border-top:1px solid var(--edge);padding:15px 0;color:var(--muted);font-size:.8rem}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media(max-width:660px){.bar,main{width:calc(100% - 30px)}nav{gap:12px;order:3;width:100%}.bar{flex-wrap:wrap;padding:10px 0}.workspace{grid-template-columns:1fr;gap:22px}.hero{padding-top:27px}}
+
+/* Warm color accents and strong section hierarchy inspired by the ClipCut reference. */
+:root{--bg:#131018;--surface:#211a2a;--edge:#44364c;--muted:#d7c8d6;--accent:#ff9279;color:#fff8ee}
+.hero{background:radial-gradient(ellipse at 87% 5%,#412a49 0%,transparent 62%)}
+.brand span,.eyebrow{color:var(--accent)}
+form button{color:#181016}
+textarea,select{font:inherit;padding:9px 10px;border:1px solid var(--edge);border-radius:4px;background:var(--surface);width:100%;color:inherit}
+textarea{min-height:100px;resize:vertical}
+.campaign-workspace,.provider-section{border-top:1px solid var(--edge)}
+.provider-section{padding:28px 0}
+.campaign-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.campaign-card{background:var(--surface);border:1px solid var(--edge);border-radius:12px;padding:15px;margin-bottom:12px;overflow-wrap:anywhere}
+.campaign-card h3,.campaign-card p{margin:0 0 8px}
+.campaign-card form,.campaign-actions{margin-top:12px}
+.campaign-actions{display:flex;gap:8px;flex-wrap:wrap}
+.campaign-card button{padding:7px 11px;border:1px solid var(--edge);border-radius:5px;background:#322339;color:inherit;cursor:pointer}
+.campaign-card a+button{margin-left:10px}
+@media(max-width:450px){nav{flex-wrap:wrap}.campaign-fields{grid-template-columns:1fr 1fr}}

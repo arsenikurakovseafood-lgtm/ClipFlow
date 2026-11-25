@@ -6,10 +6,11 @@
 <title>ClipFlow | Owner Studio</title>
 <link rel="stylesheet" href="/app.css">
 <script defer src="/app.js"></script>
+<script defer src="/campaigns.js"></script>
 </head>
 <body>
 <header><div class="bar"><a class="brand" href="/">Clip<span>Flow</span></a>
-<nav aria-label="Workspace"><a href="#overview">Overview</a><a href="#studio">Studio</a><a href="#content">Content</a></nav>
+<nav aria-label="Workspace"><a href="#overview">Overview</a><a href="#studio">Studio</a><a href="#content">Content</a><a href="#campaigns">Campaigns</a><a href="#accounts">Accounts</a></nav>
 <span class="mode">Cloud demo</span></div></header>
 <main>
 <section id="overview" class="hero">
@@ -48,6 +49,37 @@
 <ul id="jobs"></ul>
 </section>
 </div>
+<div class="workspace campaign-workspace" id="campaigns">
+<section id="agent">
+<p class="eyebrow">CAMPAIGN PLANNER</p>
+<h2>Plan a campaign</h2>
+<form id="campaign-form">
+<label>Name<input name="name" maxlength="80" required></label>
+<label>Content goal<textarea name="goal" maxlength="1500" required placeholder="Reach new listeners with weekly highlights from my approved footage"></textarea></label>
+<label>Publishing destination<select name="channel"><option value="youtube">YouTube Shorts</option><option value="instagram">Instagram Reels</option><option value="tiktok">TikTok</option></select></label>
+<div class="campaign-fields">
+<label>Duration (days)<input name="duration_days" type="number" min="1" max="90" value="14" required></label>
+<label>Days between posts<input name="cadence_days" type="number" min="1" max="90" value="7" required></label>
+<label>Budget (€)<input name="budget" type="number" min="0" max="1000" step="0.01" value="0" required></label>
+</div>
+<small>The draft records a budget target. Manual scheduling makes no external provider calls.</small>
+<button type="submit">Create plan</button>
+</form>
+</section>
+<section>
+<p class="eyebrow">REVIEW AND DISTRIBUTE</p>
+<h2>Campaigns &amp; publishing</h2>
+<p id="campaign-status" role="status"></p>
+<div id="campaign-list"></div>
+<h3>Manual publishing queue</h3>
+<div id="publication-list"></div>
+</section>
+</div>
+<section id="accounts" class="provider-section">
+<p class="eyebrow">ACCOUNTS</p>
+<h2>Publishing destinations</h2>
+<p>YouTube, Instagram and TikTok currently use manual handoff. No social accounts are connected, and handoff does not confirm publication.</p>
+</section>
 <footer>Cloud demo · Temporary storage · No paid provider calls</footer>
 </main>
 </body></html>

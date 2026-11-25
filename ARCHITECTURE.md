@@ -21,3 +21,12 @@ Budget target is €15–50 per month before workload validation. The fixed base
 The demonstration uses a Python web process and a separate FFmpeg worker. It stages uploads in a Cloud scratch directory and stores job metadata in SQLite. Queue mutations use immediate transactions. Job IDs and lease tokens determine output paths. A stale worker cannot publish over a newer claim. A crash after claiming a job can be recovered after the lease expires.
 
 Budget reservations use simulated integer micro-euros for a global monthly ceiling. The reservation is atomic with submission and idempotent for a given request key. The demo makes no paid API calls and does not reconcile actual expenses. Storage allocation includes headroom for two outputs per job. This is a bounded single-owner demonstration. Abandoned uploads after hard termination, retention, user and campaign budgets, and storage lifecycle rules still require additional work.
+
+## Integration boundaries
+
+The campaign owner path currently uses the demo queue's SQLite transaction to validate campaign state and ready clip state before scheduling. A due item allows manual handoff only while the campaign is active. The production schema adds row-level isolation for campaign records through Supabase Auth. The database migration and R2 SDK contract can be reviewed without live credentials.
+
+R2 object keys get owner and asset UUIDs from server authorization. Before signing PUT, persist the quota reservation and configure bucket CORS for the exact app origin. Check HEAD after upload, then probe the actual file in a resource-limited worker. Pin processing to a verified object revision or copy the object to an immutable worker key. Sign playback and explicit download separately after ownership checks.
+
+- [R2 presigned URLs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/)
+- [Supabase row-level security](https://supabase.com/docs/guides/database/postgres/row-level-security)
