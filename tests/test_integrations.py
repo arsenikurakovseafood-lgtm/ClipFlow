@@ -148,3 +148,31 @@ class IntegrationTests(unittest.TestCase):
         self.assertFalse(directory.exists())
         saved = self.queue.get(job_id)
         self.assertEqual((saved['state'], saved['bytes']), ('expired', 0))
+
+    def test_ai_plan_is_review_only_and_fences_unconfirmed_requests(self):
+        from clipflow.campaigns import Campaigns
+        from clipflow.planner import Plans
+        from clipflow.queue import Limit
+
+        plans = Plans(self.queue)
+        campaign_store = Campaigns(self.queue)
+        goal = 'Publish weekly clips from my own recording.'
+        with self.assertRaises(Limit):
+            plans.request(goal, 1999)
+        plans.request(goal, 4000)
+        self.assertFalse(plans.process_one('', 4000))
+        draft = {'name': 'Weekly recording', 'channel': 'youtube', 'duration_days': 21,
+                 'cadence_days': 7, 'reason': 'Give each clip time for manual review.'}
+        model = self.opener({'status': 'completed', 'output': [{
+            'type': 'message', 'content': [{'type': 'output_text', 'text': json.dumps(draft)}]
+        }]})
+        self.assertTrue(Plans(Queue(self.queue.path)).process_one('fixture', 4000, model))
+        self.assertEqual(plans.list()[0]['result'], draft)
+        self.assertEqual(campaign_store.snapshot()['campaigns'], [])
+        self.assertFalse(plans.process_one('fixture', 4000, model))
+        self.assertEqual(model.open.call_count, 1)
+        plans.request(goal, 4000)
+        self.assertTrue(plans.process_one('fixture', 4000, self.opener({'status': 'incomplete'})))
+        self.assertEqual(plans.list()[0]['state'], 'failed')
+        with self.assertRaises(Limit):
+            plans.request(goal, 4000)

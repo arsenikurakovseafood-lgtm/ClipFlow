@@ -52,3 +52,9 @@ deployment remain unverified. No paid service was activated.
 Timed cleanup removes completed sources and then expires finished outputs.
 Expiry releases the reserved storage quota and preserves a historical job row.
 R2 needs lifecycle rules as a backstop for abandoned or interrupted uploads.
+
+The AI Agent now stores planning requests in a durable queue, generates a
+strict-schema suggestion when the separately capped planning budget is enabled,
+and lets the owner copy the suggestion into the editable campaign draft. The
+provider cannot create, approve, or publish a campaign. Recovery fences out
+unconfirmed paid attempts. This planning contract is tested with fixtures.

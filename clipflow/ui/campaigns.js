@@ -132,3 +132,60 @@ campaignForm.addEventListener('submit', async event => {
 })
 refreshCampaigns()
 setInterval(refreshCampaigns, 3000)
+
+
+const agent = document.getElementById('agent-form')
+const agentStatus = document.getElementById('agent-status')
+const agentPlan = document.getElementById('agent-plan')
+let agentSignature = ''
+
+async function refreshAgent() {
+  if (agent.hidden) return
+  try {
+    const response = await fetch('/api/plans')
+    if (!response.ok) throw new Error('Could not load AI plans.')
+    const [plan] = await response.json()
+    const signature = JSON.stringify(plan || null)
+    if (signature === agentSignature) return
+    agentSignature = signature
+    agentPlan.replaceChildren()
+    if (!plan) return
+    agentStatus.textContent = plan.error || ('Draft request: ' + plan.state)
+    if (plan.result) {
+      agentPlan.append(element('p', plan.result.reason),
+        action('Review this draft', () => {
+          for (const name of ['name', 'channel', 'duration_days', 'cadence_days']) {
+            campaignForm.elements.namedItem(name).value = plan.result[name]
+          }
+          campaignForm.elements.namedItem('goal').value = plan.goal
+          campaignForm.elements.namedItem('name').focus()
+        }))
+    }
+  } catch (error) {
+    agentStatus.textContent = error.message
+  }
+}
+
+agent.addEventListener('submit', async event => {
+  event.preventDefault()
+  const button = agent.querySelector('button')
+  button.disabled = true
+  try {
+    const response = await fetch('/api/plans', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({goal: new FormData(agent).get('goal')})})
+    if (!response.ok) throw new Error((await response.json()).error)
+    await refreshAgent()
+  } catch (error) {
+    agentStatus.textContent = error.message
+  } finally {
+    button.disabled = false
+  }
+})
+capabilities.then(session => {
+  if (session?.ai_planner) {
+    agent.hidden = false
+    refreshAgent()
+    setInterval(refreshAgent, 3000)
+  }
+})

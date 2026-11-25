@@ -64,3 +64,6 @@ textarea{min-height:100px;resize:vertical}
 .check-option{display:flex;align-items:center;gap:8px}
 .check-option[hidden]{display:none}
 .check-option input{width:auto}
+#agent-form[hidden]{display:none}
+#agent-form{padding:0 0 18px;border-bottom:1px solid var(--edge);margin-bottom:18px}
+#agent-status{margin:0}

@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from clipflow.auth import LoginUnavailable, OwnerAuth, session_header
 from clipflow.campaigns import Campaigns, Conflict
+from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Limit, Queue
 from clipflow.r2 import MEDIA_TYPES, PrivateMedia
 from clipflow.render import MAX_OUTPUT_BYTES
@@ -99,7 +100,8 @@ class OwnerAPI(BaseHTTPRequestHandler):
         if url.path == '/api/session':
             return self.reply(200, {'sign_out': self.server.auth is not None,
                                     'automatic_captions': self.server.transcription_enabled,
-                                    'direct_upload': self.server.media is not None})
+                                    'direct_upload': self.server.media is not None,
+                                    'ai_planner': planner_budget() > 0})
         files = {'/signin': ('signin.html', 'text/html'), '/signin.js': ('signin.js', 'text/javascript'),
                  '/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'),
                  '/app.css': ('app.css', 'text/css'),
@@ -107,6 +109,8 @@ class OwnerAPI(BaseHTTPRequestHandler):
         if url.path in files:
             name, mime = files[url.path]
             return self.reply(200, (WEB / name).read_bytes(), mime + '; charset=utf-8')
+        if url.path == '/api/plans':
+            return self.reply(200, self.server.plans.list())
         if url.path == '/api/campaigns':
             return self.reply(200, self.server.campaigns.snapshot())
         if url.path == '/api/jobs':
@@ -182,6 +186,8 @@ class OwnerAPI(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(size))
             if not isinstance(data, dict):
                 raise ValueError('Expected an object')
+            if self.path == '/api/plans':
+                return self.reply(202, {'id': self.server.plans.request(data.get('goal'), planner_budget())})
             if self.path == '/api/campaigns':
                 return self.reply(201, {'id': self.server.campaigns.create(data)})
             match = re.fullmatch(r'/api/campaigns/([0-9a-f]{32})/(approve|pause|resume|stop|schedule)', self.path)
@@ -195,6 +201,8 @@ class OwnerAPI(BaseHTTPRequestHandler):
             else:
                 self.server.campaigns.transition(match[1], match[2])
             return self.reply(200, {'ok': True})
+        except Limit as error:
+            return self.reply(429, {'error': str(error)})
         except Conflict as error:
             return self.reply(409, {'error': str(error)})
         except (ValueError, TimeoutError) as error:
@@ -205,7 +213,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
             return self.session_request()
         if not self.authenticate(self.path):
             return
-        if self.path.startswith(('/api/campaigns', '/api/manual-posts')):
+        if self.path == '/api/plans' or self.path.startswith(('/api/campaigns', '/api/manual-posts')):
             return self.campaign_request()
         complete = re.fullmatch(r'/api/uploads/([0-9a-f]{32})/complete', self.path)
         if complete:
@@ -331,6 +339,7 @@ def main():
     if server.auth:
         server.queue.bind_owner(server.owner_id)
     server.campaigns = Campaigns(server.queue)
+    server.plans = Plans(server.queue)
     server.serve_forever()
 
 

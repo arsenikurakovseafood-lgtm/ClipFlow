@@ -56,6 +56,12 @@
 <section id="agent">
 <p class="eyebrow">CAMPAIGN PLANNER</p>
 <h2>Plan a campaign</h2>
+<form id="agent-form" hidden>
+  <label>Describe your campaign<textarea name="goal" maxlength="1500" required></textarea></label>
+  <button type="submit">Ask AI for a draft</button>
+  <p id="agent-status" role="status"></p>
+  <div id="agent-plan"></div>
+</form>
 <form id="campaign-form">
 <label>Name<input name="name" maxlength="80" required></label>
 <label>Content goal<textarea name="goal" maxlength="1500" required placeholder="Reach new listeners with weekly highlights from my approved footage"></textarea></label>

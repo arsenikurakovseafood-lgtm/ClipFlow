@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Queue
 from clipflow.r2 import PrivateMedia
 from clipflow.render import Cue, render
@@ -95,6 +96,8 @@ def main():
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     queue = Queue(root / 'jobs.sqlite3')
     transcriber = Transcriber.configured()
+    plans = Plans(queue)
+    plan_key = os.environ.get('OPENAI_API_KEY', '')
     media = PrivateMedia.configured()
     owner_id = os.environ.get('CLIPFLOW_OWNER_ID')
     if media and not owner_id:
@@ -111,7 +114,7 @@ def main():
         job = queue.claim()
         if job:
             work(root, queue, job, transcriber, media, owner_id)
-        else:
+        elif not plans.process_one(plan_key, planner_budget()):
             time.sleep(0.5)
 
 

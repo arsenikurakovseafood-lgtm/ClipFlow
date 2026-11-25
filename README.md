@@ -83,3 +83,11 @@ still need validation with the live account.
 - [R2 presigned URLs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/)
 - [OpenAI file transcription](https://developers.openai.com/api/docs/guides/speech-to-text)
 - [GPT-Transcribe pricing](https://developers.openai.com/api/docs/models/gpt-transcribe)
+
+To enable the AI Agent, set a positive `CLIPFLOW_PLANNING_MONTHLY_MICRO_USD`
+cap and the worker-only OpenAI key after approving paid workloads. Each draft
+reserves a conservative $0.002. It remains a suggestion until the owner reviews
+it, creates a draft, and separately approves the campaign.
+
+- [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+- [GPT-6 Luna pricing](https://developers.openai.com/api/docs/models/gpt-6-luna)
