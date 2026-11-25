@@ -16,7 +16,7 @@ services:
     networks: [studio]
     mem_limit: 256m
     healthcheck:
-      test: [CMD, python, -c, "from urllib.request import urlopen; urlopen('http://127.0.0.1:3000/api/jobs', timeout=2).close()"]
+      test: [CMD, python, -c, "from urllib.request import urlopen; urlopen('http://127.0.0.1:3000/healthz', timeout=2).close()"]
       interval: 15s
       timeout: 3s
       retries: 4
@@ -24,6 +24,9 @@ services:
     <<: *app
     command: [python, -m, clipflow.worker, /var/lib/clipflow]
     network_mode: none
+    environment:
+      CLIPFLOW_SOURCE_RETENTION_HOURS: "${CLIPFLOW_SOURCE_RETENTION_HOURS:-24}"
+      CLIPFLOW_OUTPUT_RETENTION_HOURS: "${CLIPFLOW_OUTPUT_RETENTION_HOURS:-168}"
     mem_limit: 768m
     cpus: 2.0
   gateway:
@@ -35,7 +38,7 @@ services:
     environment:
       CLIPFLOW_SITE: "${CLIPFLOW_SITE:?Set the Caddy site address}"
       CLIPFLOW_OWNER: "${CLIPFLOW_OWNER:?Set the owner username}"
-      CLIPFLOW_OWNER_HASH: "${CLIPFLOW_OWNER_HASH:?Set the Caddy password hash}"
+      CLIPFLOW_OWNER_HASH: "${CLIPFLOW_OWNER_HASH:-}"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

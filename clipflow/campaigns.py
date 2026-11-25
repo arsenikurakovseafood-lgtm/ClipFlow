@@ -94,7 +94,8 @@ class Campaigns:
         with self.queue.transaction() as db:
             changed = db.execute("""UPDATE manual_posts SET state='handed_off'
                 WHERE id=? AND state='scheduled' AND scheduled_at<=?
-                AND campaign_id IN (SELECT id FROM campaigns WHERE state='active')""",
+                AND campaign_id IN (SELECT id FROM campaigns WHERE state='active')
+                AND job_id IN (SELECT id FROM jobs WHERE state='ready')""",
                 (post_id, datetime.now(timezone.utc).isoformat())).rowcount
             if not changed:
                 raise Conflict('Only due items in active campaigns can be handed off')
@@ -107,6 +108,7 @@ class Campaigns:
                 c.channel,j.name,c.name AS campaign_name,
                 CASE WHEN p.state='handed_off' THEN p.state
                      WHEN c.state='stopped' THEN 'cancelled'
+                     WHEN j.state='expired' THEN 'asset_expired'
                      WHEN c.state='paused' THEN 'on_hold'
                      WHEN p.scheduled_at<=? THEN 'due' ELSE p.state END AS state
                 FROM manual_posts p JOIN campaigns c ON c.id=p.campaign_id

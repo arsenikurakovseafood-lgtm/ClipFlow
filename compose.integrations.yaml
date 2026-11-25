@@ -1,0 +1,30 @@
+x-storage: &storage
+  CLIPFLOW_OWNER_ID: "${CLIPFLOW_OWNER_ID:?Set the Supabase owner UUID}"
+  CLIPFLOW_R2_ACCOUNT_ID: "${CLIPFLOW_R2_ACCOUNT_ID:?Set the R2 account ID}"
+  CLIPFLOW_R2_BUCKET: "${CLIPFLOW_R2_BUCKET:?Set the private R2 bucket}"
+  CLIPFLOW_R2_ACCESS_KEY_ID: "${CLIPFLOW_R2_ACCESS_KEY_ID:?Set a scoped R2 access key}"
+  CLIPFLOW_R2_SECRET_ACCESS_KEY: "${CLIPFLOW_R2_SECRET_ACCESS_KEY:?Set the scoped R2 secret}"
+  CLIPFLOW_PAID_WORKLOADS_ENABLED: "${CLIPFLOW_PAID_WORKLOADS_ENABLED:-false}"
+  CLIPFLOW_TRANSCRIPTION_MONTHLY_MICRO_USD: "${CLIPFLOW_TRANSCRIPTION_MONTHLY_MICRO_USD:-0}"
+
+services:
+  web:
+    command: [python, -m, clipflow.web, /var/lib/clipflow, --bind, 0.0.0.0, --application-auth]
+    environment:
+      <<: *storage
+      CLIPFLOW_SUPABASE_URL: "${CLIPFLOW_SUPABASE_URL:?Set the Supabase Auth origin}"
+      CLIPFLOW_SUPABASE_KEY: "${CLIPFLOW_SUPABASE_KEY:?Set the Supabase publishable key}"
+      CLIPFLOW_SESSION_SECRET: "${CLIPFLOW_SESSION_SECRET:?Set a dedicated session secret}"
+    networks: [studio, providers]
+  worker:
+    network_mode: !reset null
+    networks: [providers]
+    environment:
+      <<: *storage
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+  gateway:
+    volumes:
+      - ./deploy/Caddyfile.owner:/etc/caddy/Caddyfile:ro
+
+networks:
+  providers:

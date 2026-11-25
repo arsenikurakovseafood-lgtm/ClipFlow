@@ -90,7 +90,8 @@ function postCard(post) {
   const link = element('a', 'Open clip')
   link.href = '/media/' + post.job_id
   card.append(element('h3', post.name), element('p', post.campaign_name + ' · ' + providers[post.channel]),
-    element('p', new Date(post.scheduled_at).toLocaleString() + ' · ' + post.state.replace('_', ' ')), link)
+    element('p', new Date(post.scheduled_at).toLocaleString() + ' · ' + post.state.replaceAll('_', ' ')))
+  if (!['asset_expired', 'cancelled'].includes(post.state)) card.append(link)
   if (post.state === 'due') card.append(action('Mark handed off', () => campaignAction('/api/manual-posts/' + post.id + '/handoff')))
   return card
 }

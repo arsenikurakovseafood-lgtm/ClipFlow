@@ -27,3 +27,28 @@ password-protected Caddy gateway with a shared persistent volume. The Framer
 landing uses the updated pink, red, blue, black and white palette. The old
 studio screenshot, stock carousel, and developer navigation links were removed
 from the landing. The Framer Free hosting badge is platform-managed.
+
+## Owner integration milestone
+
+The Framer page is published on the original ClipCut copy with pink, red, blue,
+light blue, black and white. Orange accent fills in the workflow were updated.
+The landing shows the synthetic render and remains separate from the owner app.
+
+The app now implements an owner login through Supabase Auth, signed HTTP-only
+session cookies, owner identity binding, direct browser uploads using signed
+R2 PUT URLs, metadata verification plus conditional reads, lease-fenced R2
+outputs, and private streaming and download redirects. These flows use SQLite
+for the owner queue. The Supabase Postgres campaign migration is separate.
+
+Optional OpenAI file transcription generates captions for the selected source
+range using six-second windows. Captions are window-aligned. The system makes
+no claim of word-level synchronization or automatic clip selection. A global
+USD reservation is atomic and conservative, and failed paid attempts are
+fenced against automatic retry. Owner/session, R2 and transcription contracts
+are tested with fixtures, including a real local CPU render. Live provider
+credentials, CORS, OAuth/API reviews, TLS routing, and public production
+deployment remain unverified. No paid service was activated.
+
+Timed cleanup removes completed sources and then expires finished outputs.
+Expiry releases the reserved storage quota and preserves a historical job row.
+R2 needs lifecycle rules as a backstop for abandoned or interrupted uploads.

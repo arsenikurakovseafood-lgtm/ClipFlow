@@ -52,3 +52,34 @@ This deployment package uses the demo's SQLite and private on-server storage.
 Use authorized media and keep the hostname private to the owner. Before real
 customer traffic, configure production authentication and media storage, and
 complete retention, cleanup, and usage enforcement.
+
+## Enable owner sign-in and direct private media on a configured cloud server
+
+For this mode, use an HTTPS hostname and provide the Supabase and R2 settings
+listed in `.env.example` in the cloud secret store. Provision the single owner
+in Supabase Auth and use their UUID. Browser login uses that user's password
+and the server accepts only that UUID. Use a dedicated random session secret
+and rotate it to invalidate outstanding studio sessions.
+
+Set the R2 bucket to private. Scope the key to this bucket and configure CORS
+only for the exact studio origin, permitting PUT and the Content-Type header.
+Set lifecycle expiry for abandoned media under the owners prefix as a backstop.
+The app keeps normal source and output durations in the retention settings.
+
+Run on the authorized cloud host:
+
+```sh
+docker compose -f compose.yaml -f compose.integrations.yaml up -d --build
+```
+
+The integration variant uses the application login and HTTPS gateway. Keep
+`CLIPFLOW_PAID_WORKLOADS_ENABLED=false` until the owner approves spend. To enable
+captions, provide the worker-only OpenAI key and a positive monthly USD budget
+in microdollars. Usage estimates reserve one full billed minute per six-second
+window at the documented model rate. Estimate precision and provider access
+still need validation with the live account.
+
+- [Supabase owner authentication](https://supabase.com/docs/reference/javascript/auth-signinwithpassword)
+- [R2 presigned URLs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/)
+- [OpenAI file transcription](https://developers.openai.com/api/docs/guides/speech-to-text)
+- [GPT-Transcribe pricing](https://developers.openai.com/api/docs/models/gpt-transcribe)

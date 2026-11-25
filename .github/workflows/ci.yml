@@ -25,3 +25,10 @@ jobs:
           path: ${{ runner.temp }}/clipflow-evidence/
           if-no-files-found: error
           retention-days: 14
+  private-deployment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: bash tests/compose-smoke.sh
