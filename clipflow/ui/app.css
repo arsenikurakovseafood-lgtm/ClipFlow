@@ -1,4 +1,4 @@
-:root {color-scheme:dark; --bg:#131719;--surface:#1c2223;--edge:#394242;--muted:#aebcba;--accent:#c5f374;font:16px/1.55 system-ui,sans-serif;color:#f7faf7;background:var(--bg)}
+:root {color-scheme:dark; --bg:#070811;--surface:#111326;--edge:#39436a;--muted:#c0cae0;--accent:#51c7ff;font:16px/1.55 system-ui,sans-serif;color:#f6f8ff;background:var(--bg)}
 *{box-sizing:border-box}
 body{margin:0}
 header{border-bottom:1px solid var(--edge)}
@@ -11,7 +11,7 @@ nav{display:flex;gap:24px}
 nav a{color:var(--muted);text-decoration:none;font-size:.9rem}
 nav a:hover,.download:hover{color:var(--accent)}
 .mode{font-size:.76rem;white-space:nowrap;border:1px solid var(--edge);padding:4px 9px}
-.hero{padding:44px 0 29px;border-bottom:1px solid var(--edge);background:radial-gradient(ellipse at 90% 0%,#253429 0%,transparent 58%)}
+.hero{padding:44px 0 29px;border-bottom:1px solid var(--edge);background:radial-gradient(ellipse at 90% 0%,#202754 0%,transparent 58%)}
 .eyebrow{letter-spacing:.16em;font-size:.72rem;font-weight:760;margin:0 0 8px}
 h1,h2{line-height:1.08;letter-spacing:-.055em;margin:0}
 h1{font-size:clamp(3.25rem,8vw,6.4rem);font-weight:590}
@@ -24,12 +24,12 @@ p{color:var(--muted)}
 .workspace{display:grid;grid-template-columns:1fr 1fr;gap:44px;padding:32px 0}
 form{display:grid;gap:13px}
 label{display:grid;gap:6px;font-size:.9rem;min-width:0}
-.upload{border:1px dashed #657471;padding:13px}
+.upload{border:1px dashed #52638e;padding:13px}
 input{font:inherit;padding:8px 10px;border:1px solid var(--edge);border-radius:4px;background:var(--surface);width:100%}
 input[type=file]{padding:6px;max-width:100%}
 .range{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 button{font:inherit;cursor:pointer}
-form button{justify-self:start;border:0;border-radius:4px;background:var(--accent);color:#172110;font-weight:700;padding:10px 15px}
+form button{justify-self:start;border:0;border-radius:4px;background:linear-gradient(112deg,#b80d58,#a81c40 52%,#324ac7);color:#fff;font-weight:700;padding:10px 15px}
 form button span{margin-left:12px}
 button:disabled{opacity:.6;cursor:wait}
 #status{margin:0;min-height:1.55em}
@@ -45,11 +45,6 @@ footer{border-top:1px solid var(--edge);padding:15px 0;color:var(--muted);font-s
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media(max-width:660px){.bar,main{width:calc(100% - 30px)}nav{gap:12px;order:3;width:100%}.bar{flex-wrap:wrap;padding:10px 0}.workspace{grid-template-columns:1fr;gap:22px}.hero{padding-top:27px}}
 
-/* Warm color accents and strong section hierarchy inspired by the ClipCut reference. */
-:root{--bg:#131018;--surface:#211a2a;--edge:#44364c;--muted:#d7c8d6;--accent:#ff9279;color:#fff8ee}
-.hero{background:radial-gradient(ellipse at 87% 5%,#412a49 0%,transparent 62%)}
-.brand span,.eyebrow{color:var(--accent)}
-form button{color:#181016}
 textarea,select{font:inherit;padding:9px 10px;border:1px solid var(--edge);border-radius:4px;background:var(--surface);width:100%;color:inherit}
 textarea{min-height:100px;resize:vertical}
 .campaign-workspace,.provider-section{border-top:1px solid var(--edge)}
@@ -59,6 +54,6 @@ textarea{min-height:100px;resize:vertical}
 .campaign-card h3,.campaign-card p{margin:0 0 8px}
 .campaign-card form,.campaign-actions{margin-top:12px}
 .campaign-actions{display:flex;gap:8px;flex-wrap:wrap}
-.campaign-card button{padding:7px 11px;border:1px solid var(--edge);border-radius:5px;background:#322339;color:inherit;cursor:pointer}
+.campaign-card button{padding:7px 11px;border:1px solid var(--edge);border-radius:5px;background:#1b2444;color:inherit;cursor:pointer}
 .campaign-card a+button{margin-left:10px}
 @media(max-width:450px){nav{flex-wrap:wrap}.campaign-fields{grid-template-columns:1fr 1fr}}

@@ -1,0 +1,53 @@
+x-app: &app
+  image: clipflow-owner:preview
+  build: .
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  pids_limit: 96
+  volumes:
+    - workspace:/var/lib/clipflow
+
+services:
+  web:
+    <<: *app
+    command: [python, -m, clipflow.web, /var/lib/clipflow, --bind, 0.0.0.0, --authenticated-gateway]
+    networks: [studio]
+    mem_limit: 256m
+    healthcheck:
+      test: [CMD, python, -c, "from urllib.request import urlopen; urlopen('http://127.0.0.1:3000/api/jobs', timeout=2).close()"]
+      interval: 15s
+      timeout: 3s
+      retries: 4
+  worker:
+    <<: *app
+    command: [python, -m, clipflow.worker, /var/lib/clipflow]
+    network_mode: none
+    mem_limit: 768m
+    cpus: 2.0
+  gateway:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "${CLIPFLOW_BIND_IP:-127.0.0.1}:${CLIPFLOW_HTTP_PORT:-80}:80"
+      - "${CLIPFLOW_BIND_IP:-127.0.0.1}:${CLIPFLOW_HTTPS_PORT:-443}:443"
+    environment:
+      CLIPFLOW_SITE: "${CLIPFLOW_SITE:?Set the Caddy site address}"
+      CLIPFLOW_OWNER: "${CLIPFLOW_OWNER:?Set the owner username}"
+      CLIPFLOW_OWNER_HASH: "${CLIPFLOW_OWNER_HASH:?Set the Caddy password hash}"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [studio, ingress]
+
+networks:
+  studio:
+    internal: true
+  ingress:
+
+volumes:
+  workspace:
+  caddy_data:
+  caddy_config:

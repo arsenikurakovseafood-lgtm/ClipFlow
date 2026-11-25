@@ -1,0 +1,10 @@
+{$CLIPFLOW_SITE} {
+    basic_auth {
+        {$CLIPFLOW_OWNER} {$CLIPFLOW_OWNER_HASH}
+    }
+    header {
+        X-Robots-Tag "noindex, nofollow"
+        Referrer-Policy "no-referrer"
+    }
+    reverse_proxy web:3000
+}

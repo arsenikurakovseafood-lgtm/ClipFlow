@@ -19,3 +19,11 @@ No authenticated hosted HTTP preview port was configured during verification. Gi
 Owner Studio now persists reviewed campaign drafts with a goal, channel, cadence, duration, and budget target. Approval is required before a ready clip can be added to the manual queue. Pausing holds outstanding items, resuming restores their scheduled or due status, and stopping cancels outstanding handoffs. Completed handoffs are evidence of owner action only. Nothing is sent to platform APIs. The cadence and budget are reviewed planning values. The current campaign form uses rule-based counts and manual setup.
 
 A Supabase migration prepares tenant-scoped campaign data and legal state transitions. The R2 media adapter prepares scoped signed PUT/GET requests and object metadata checks. The demo remains on SQLite and cloud scratch storage. Apply and verify the migration in an authorized Supabase project and run live R2 browser CORS, size enforcement, and conditional reads before changing the demo backend.
+
+## Private container deployment
+
+Docker Compose packages the owner studio, isolated FFmpeg worker, and
+password-protected Caddy gateway with a shared persistent volume. The Framer
+landing uses the updated pink, red, blue, black and white palette. The old
+studio screenshot, stock carousel, and developer navigation links were removed
+from the landing. The Framer Free hosting badge is platform-managed.
