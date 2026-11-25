@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 
 MAX_SOURCE_BYTES = 250 * 1024 * 1024
 MAX_SOURCE_SECONDS = 1800
+MAX_OUTPUT_BYTES = 32 * 1024 * 1024
 LOCAL_PROTOCOLS = ('-protocol_whitelist', 'file', '-format_whitelist', 'mov,matroska,webm,mp3,wav,flac,ogg')
 
 
@@ -93,12 +94,14 @@ def render(source: Path, output: Path, start: float, end: float, cues: list[Cue]
             '-map_metadata', '-1', '-map_chapters', '-1', '-vf', filters,
             '-c:v', 'libx264', '-threads', '2', '-preset', 'veryfast',
             '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ac', '2',
+            '-maxrate', '3M', '-bufsize', '6M', '-fs', str(MAX_OUTPUT_BYTES),
             '-movflags', '+faststart', str(staged), timeout=240, cwd=work,
         )
         result = probe(staged)
         stream = next(s for s in result['streams'] if s['codec_type'] == 'video')
         actual_duration = float(result['format']['duration'])
         if ((stream['width'], stream['height'], stream['codec_name']) != (720, 1280, 'h264')
+                or staged.stat().st_size > MAX_OUTPUT_BYTES
                 or abs(actual_duration - (end - start)) > 0.2):
             raise ValueError('Rendered file failed quality checks')
         os.replace(staged, output)

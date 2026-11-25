@@ -15,3 +15,9 @@ Budget target is €15–50 per month before workload validation. The fixed base
 - [R2 pricing](https://developers.cloudflare.com/r2/pricing/)
 - [OpenAI pricing](https://developers.openai.com/api/docs/pricing)
 - [Stripe Estonia pricing](https://stripe.com/en-ee/pricing)
+
+## Cloud demonstration boundary
+
+The demonstration uses a Python web process and a separate FFmpeg worker. It stages uploads in a Cloud scratch directory and stores job metadata in SQLite. Queue mutations use immediate transactions. Job IDs and lease tokens determine output paths. A stale worker cannot publish over a newer claim. A crash after claiming a job can be recovered after the lease expires.
+
+Budget reservations use simulated integer micro-euros for a global monthly ceiling. The reservation is atomic with submission and idempotent for a given request key. The demo makes no paid API calls and does not reconcile actual expenses. Storage allocation includes headroom for two outputs per job. This is a bounded single-owner demonstration. Abandoned uploads after hard termination, retention, user and campaign budgets, and storage lifecycle rules still require additional work.

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ClipFlow | Owner Studio</title>
+<link rel="stylesheet" href="/app.css">
+<script defer src="/app.js"></script>
+</head>
+<body>
+<header><div class="bar"><a class="brand" href="/">Clip<span>Flow</span></a>
+<nav aria-label="Workspace"><a href="#overview">Overview</a><a href="#studio">Studio</a><a href="#content">Content</a></nav>
+<span class="mode">Cloud demo</span></div></header>
+<main>
+<section id="overview" class="hero">
+<p class="eyebrow">OWNER WORKSPACE</p>
+<h1>Make the cut.</h1>
+<p>Turn an authorized source video into a vertical clip. Your render runs on the cloud worker.</p>
+<div class="stats"><div><strong id="ready">—</strong><span>Ready to preview</span></div>
+<div><strong id="active">—</strong><span>In progress</span></div>
+<div><strong id="failed">—</strong><span>Failed</span></div></div>
+</section>
+<div class="workspace">
+<section id="studio">
+<p class="eyebrow">STUDIO</p>
+<h2>Create a clip</h2>
+<form id="render">
+<label class="upload">Source video
+<input type="file" name="source" accept=".mp4,.mov,.webm,video/mp4,video/quicktime,video/webm" required>
+<small>Authorized MP4, MOV or WebM · up to 25 MiB</small></label>
+<div class="range">
+<label>Start (seconds)<input name="start" type="number" min="0" max="1800" step="0.01" value="0" required></label>
+<label>End (seconds)<input name="end" type="number" min="1" max="1800" step="0.01" value="4" required></label>
+</div>
+<label>Optional caption<input name="caption" maxlength="160" placeholder="Text shown during this clip"></label>
+<button type="submit">Queue render <span aria-hidden="true">↗</span></button>
+<p id="status" role="status"></p>
+</form>
+</section>
+<section id="content">
+<p class="eyebrow">CONTENT</p>
+<h2>Render library</h2>
+<p id="library-status" role="status">Loading jobs…</p>
+<div id="preview" hidden>
+<video id="player" aria-label="Rendered vertical clip" controls preload="metadata" playsinline></video>
+<a id="download" class="download">Download MP4</a>
+</div>
+<ul id="jobs"></ul>
+</section>
+</div>
+<footer>Cloud demo · Temporary storage · No paid provider calls</footer>
+</main>
+</body></html>
