@@ -12,3 +12,16 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
       - run: python3 -m unittest discover -s tests -v
+      - name: Install pinned browser test library
+        run: npm install --no-save --no-package-lock playwright@1.62.1
+      - name: Verify the owner browser workflow
+        run: |
+          node tests/browser.cjs "$RUNNER_TEMP/clipflow-evidence"
+          cat "$RUNNER_TEMP/clipflow-evidence/verification.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep synthetic demo screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: clipflow-synthetic-owner-demo
+          path: ${{ runner.temp }}/clipflow-evidence/
+          if-no-files-found: error
+          retention-days: 14

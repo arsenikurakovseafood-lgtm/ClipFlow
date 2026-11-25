@@ -12,4 +12,4 @@ The browser can upload an authorized file to temporary Cloud storage, queue proc
 
 Cloud Chromium verified browser upload, closing the submitting tab, reopening the dashboard, playback of a 4-second 720 × 1280 H.264 MP4, byte-range streaming, and layout at 390 pixels. Four Python tests cover subtitle timing, real encoding, concurrent budget reservation, idempotency, and stale lease recovery across queue instances. GitHub Actions is configured to run the Python tests when GitHub delivery becomes available.
 
-The public GitHub repository is empty and the cloud identity's push previously returned HTTP 403. No authenticated hosted HTTP preview port was configured during verification. Production Supabase Auth/Postgres, direct signed R2 upload and preview, transcription, retention and orphan sweeping, and always-on deployment are pending.
+No authenticated hosted HTTP preview port was configured during verification. GitHub Actions runs the repeatable browser test and attaches synthetic demo screenshots. Production Supabase Auth/Postgres, direct signed R2 upload and preview, transcription, retention and orphan sweeping, and always-on deployment are pending.

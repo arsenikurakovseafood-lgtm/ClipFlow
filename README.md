@@ -13,6 +13,12 @@ Caption input is a JSON array with `start` and `end` in source-relative seconds 
 
 See [build status](BUILD_STATUS.md) and [architecture](ARCHITECTURE.md).
 
+## Cloud constraints
+
+Development, dependencies, builds, verification, and runtime are cloud-only. GitHub Actions runs checks and will handle approved deployments. The application, scheduler, workers, and FFmpeg belong on remote infrastructure. Production design uses Supabase Auth/Postgres, private R2 media, signed browser-direct upload, streamed preview, and explicit download.
+
+Production must enforce spending limits, storage quotas, retention, and temporary-file cleanup. The initial €15–50 monthly target requires validation. Paid services require explicit founder approval. Codex Cloud is the development environment.
+
 ## Private owner demo
 
 Run the following in two processes on Codex Cloud, sharing a Cloud-only state directory with mode `0700`.
