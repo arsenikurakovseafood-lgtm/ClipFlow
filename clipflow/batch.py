@@ -9,7 +9,8 @@ from urllib.request import Request, build_opener
 from uuid import UUID, uuid5
 
 from clipflow.auth import NoRedirect
-from clipflow.youtube import ImportFailed, fetch_youtube, youtube_url
+from clipflow.converter import CONVERSION_FAILED, ConversionError
+from clipflow.youtube import ACCESS_REFUSED, youtube_url
 
 from clipflow.render import Cue, LOCAL_PROTOCOLS, probe
 from clipflow.sample import stage_sample
@@ -34,7 +35,7 @@ class BatchError(ValueError):
     pass
 
 
-def parse_captions(text):
+def parse_captions(text, max_end=1800):
     def seconds(parts):
         hours, minutes, seconds, millis = (int(value or 0) for value in parts)
         if not (minutes < 60 and seconds < 60):
@@ -55,7 +56,7 @@ def parse_captions(text):
             text_lines.append(lines[index])
             index += 1
         caption = re.sub(r'<[^>]*>', '', ' '.join(text_lines)).strip()[:160]
-        if caption and 0 <= start < end <= 1800:
+        if caption and 0 <= start < end <= max_end:
             cues.append(Cue(start, end, caption))
         if len(cues) > 1000:
             raise BatchError('The subtitle file has too many cues.')
@@ -169,28 +170,43 @@ def fetch_source(url, destination, opener=None):
         staged.unlink(missing_ok=True)
 
 
-def stage_batch(root, queue, job, data, transcriber=None):
+def stage_batch(root, queue, job, data, transcriber=None, converter=None):
     folder = root / job['id']
     source = folder / 'source'
     if data.get('sample'):
         stage_sample(folder, data['mode'])
     if data.get('source_url') and not source.exists():
         if youtube_url(data['source_url']):
+            if not data.get('trim'):
+                raise BatchError(ACCESS_REFUSED)
+            if converter is None:
+                raise BatchError(CONVERSION_FAILED)
             try:
-                fetch_youtube(data['source_url'], source)
-            except ImportFailed as error:
+                converter.stage(queue, job, data['source_url'], data['trim'], source)
+            except ConversionError as error:
                 raise BatchError(str(error)) from error
         else:
             fetch_source(data['source_url'], source)
     info = probe(source)
     duration = float(info['format']['duration'])
+    window = data.get('trim')
+    if window and abs(duration - (window['end'] - window['start'])) > 0.5:
+        raise BatchError(CONVERSION_FAILED)
+    if window:
+        duration = min(duration, window['end'] - window['start'])
     if not (3 <= duration <= data['source_seconds']) or not any(
             stream['codec_type'] == 'video' and not stream.get('disposition', {}).get('attached_pic')
             and 0 < stream['width'] <= 1920 and 0 < stream['height'] <= 1920
             for stream in info['streams']):
         raise BatchError('Batch source must be 3 seconds to 2 minutes, with dimensions up to 1920 px.')
     captions = folder / 'captions'
-    cues = parse_captions(captions.read_text(encoding='utf-8-sig')) if captions.exists() else []
+    cues = parse_captions(captions.read_text(encoding='utf-8-sig'), max_end=43200 if window else 1800) if captions.exists() else []
+    if window and cues:
+        offset = window['start']
+        cues = [Cue(max(0, cue.start - offset), min(duration, cue.end - offset), cue.text)
+                for cue in cues if cue.end > offset and cue.start < offset + duration]
+        if not cues:
+            raise BatchError('The subtitles do not overlap the selected timecode range.')
     auto = data.get('automatic_captions') and not cues
     if data['mode'] == 'speech':
         if not cues:

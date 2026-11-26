@@ -4,15 +4,26 @@ const batchTrack = document.getElementById('batch-track')
 const batchStatus = document.getElementById('batch-status')
 let batchKey
 let batchSession
+let submittingBatch = false
 const sourceKind = batchForm.elements.namedItem('sourceKind')
 function updateSourceKind() {
-  const link = sourceKind.value === 'link'
+  const converter = sourceKind.value === 'youtube'
+  const link = converter || sourceKind.value === 'link'
   const file = sourceKind.value === 'file'
   document.getElementById('batch-source-file').hidden = !file
   document.getElementById('batch-source-url').hidden = !link
   document.getElementById('batch-sample-note').hidden = sourceKind.value !== 'sample'
   batchForm.elements.namedItem('source').required = file
   batchForm.elements.namedItem('sourceUrl').required = link
+  document.getElementById('batch-segment').hidden = !converter
+  for (const field of ['segmentStart', 'segmentEnd', 'authorized']) {
+    batchForm.elements.namedItem(field).required = converter
+  }
+  document.getElementById('youtube-source-help').textContent = converter
+    ? 'Paste the link to a YouTube video or Short.' : 'Paste the direct HTTPS link to an R2 video file.'
+  document.getElementById('converter-availability').textContent = batchSession?.youtube_converter ? ''
+    : 'The converter is off on this deployment. You can upload a pre-cut video or use a direct R2 file link.'
+  batchForm.querySelector('button[type=submit]').disabled = submittingBatch || (converter && !batchSession?.youtube_converter)
   if (batchSession) updateBatchMode(batchSession)
 }
 sourceKind.addEventListener('change', updateSourceKind)
@@ -40,6 +51,9 @@ function updateBatchMode(session) {
     : session.automatic_captions
       ? 'Attach SRT or WebVTT, or generate captions from source speech with OpenAI.'
       : 'Required in Owner Preview. Attach SRT or WebVTT aligned to the source.'
+  if (sourceKind.value === 'youtube') {
+    document.getElementById('batch-caption-help').textContent += ' Use timestamps from the full YouTube video.'
+  }
 }
 
 capabilities.then(session => {
@@ -70,13 +84,15 @@ batchForm.addEventListener('input', () => { batchKey = undefined })
 batchForm.addEventListener('submit', async event => {
   event.preventDefault()
   const values = new FormData(batchForm)
-  const sourceUrl = values.get('sourceKind') === 'link' ? values.get('sourceUrl').trim() : ''
+  const converter = values.get('sourceKind') === 'youtube'
+  const sourceUrl = converter || values.get('sourceKind') === 'link' ? values.get('sourceUrl').trim() : ''
   const sample = values.get('sourceKind') === 'sample'
   const source = sample || sourceUrl ? null : values.get('source')
   const music = values.get('mode') === 'music' ? values.get('music') : null
   const captions = values.get('captions')
   const button = batchForm.querySelector('button')
   batchStatus.textContent = 'Staging source and preparing the batch…'
+  submittingBatch = true
   button.disabled = true
   batchKey ||= crypto.randomUUID()
   try {
@@ -93,6 +109,9 @@ batchForm.addEventListener('submit', async event => {
         'X-Content-Goal': encodeURIComponent(values.get('goal')),
         'X-Batch-Reference': encodeURIComponent(values.get('reference')),
         'X-Batch-Source-URL': encodeURIComponent(sourceUrl),
+        'X-Segment-Start': converter ? values.get('segmentStart').trim() : '',
+        'X-Segment-End': converter ? values.get('segmentEnd').trim() : '',
+        'X-Source-Authorized': converter && values.has('authorized') ? '1' : '0',
         'X-Batch-Sample': sample ? '1' : '0',
         'X-Batch-Mode': values.get('mode'),
         'X-Campaign-ID': values.get('campaign'),
@@ -109,13 +128,14 @@ batchForm.addEventListener('submit', async event => {
     const result = await response.json()
     if (!response.ok) throw new Error(result.error)
     if (batchSession.direct_upload) await uploadPrivateMedia(result, bundle)
-    batchStatus.textContent = sourceUrl
+    batchStatus.textContent = converter ? 'Segment conversion queued. Open Content to track your clips.' : sourceUrl
       ? 'Video import queued. Open Content to check whether the source was retrieved.'
       : 'Batch queued. Open Content to track rendering.'
     await refresh()
   } catch (error) {
     batchStatus.textContent = error.message || 'Batch upload failed.'
   } finally {
-    button.disabled = false
+    submittingBatch = false
+    button.disabled = sourceKind.value === 'youtube' && !batchSession?.youtube_converter
   }
 })

@@ -9,6 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from clipflow.batch import BATCH_OUTPUT_BYTES, PALETTES, BatchError, stage_batch
+from clipflow.converter import VidFetch
 from clipflow.insights import Insights
 from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Queue, source_retention_seconds
@@ -76,7 +77,7 @@ def stage_private_batch(directory, job_id, data, media, owner_id):
         complete.touch(mode=0o600)
 
 
-def work(root, queue, job, transcriber=None, media=None, owner_id=None):
+def work(root, queue, job, transcriber=None, media=None, owner_id=None, converter=None):
     data = json.loads(job['spec'])
     directory = root / job['id']
     output = directory / (job['lease_token'] + '.mp4')
@@ -88,7 +89,7 @@ def work(root, queue, job, transcriber=None, media=None, owner_id=None):
         if data.get('batch'):
             if remote:
                 stage_private_batch(directory, job['id'], data, media, owner_id)
-            stage_batch(root, queue, job, data, transcriber)
+            stage_batch(root, queue, job, data, transcriber, converter)
             return
         if remote and not data.get('batch_parent'):
             with TemporaryDirectory(prefix='media-', dir=root) as scratch:
@@ -164,6 +165,7 @@ def main():
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     queue = Queue(root / 'jobs.sqlite3')
     transcriber = Transcriber.configured()
+    converter = VidFetch.configured()
     plans = Plans(queue)
     insights = Insights(queue)
     plan_key = os.environ.get('OPENAI_API_KEY', '')
@@ -180,10 +182,13 @@ def main():
             sweep(root, queue, media, owner_id, now=now, source_seconds=source_seconds,
                   output_seconds=output_seconds)
             insights.expire_platform_metrics(now)
+            if converter:
+                for job_id, remote_id in queue.pending_converter_cleanup():
+                    converter.release(queue, job_id, remote_id)
             next_sweep = now + 300
         job = queue.claim()
         if job:
-            work(root, queue, job, transcriber, media, owner_id)
+            work(root, queue, job, transcriber, media, owner_id, converter)
         elif not plans.process_one(plan_key, planner_budget()):
             time.sleep(0.5)
 

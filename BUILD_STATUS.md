@@ -1,5 +1,17 @@
 # Build status
 
+## YouTube segment conversion
+
+The earlier direct YouTube importer has been removed. Studio now requests both
+timecodes and source permission. When connected, the cloud worker asks VidFetch
+for just that range, verifies the resulting MP4 and shifts source-relative
+subtitle timestamps before producing clips. The provider fixture verifies the
+range request and real FFmpeg output. A cloud browser fixture verifies the
+range form, failed conversion, and replacement with a pre-cut source while
+preserving the existing track. No live provider account or trim entitlement
+has been verified. The temporary Render Free deployment shows the converter
+as disabled. No provider subscription was purchased or activated.
+
 ## Integrated owner release · 26 November 2026
 
 The owner preview has one browser workflow from a guided goal draft through campaign approval, linked source rendering, per-clip approval, scheduled manual handoff, an owner-reported post URL, performance checkpoints and a EUR cash ledger. Studio supports spoken highlights, music promos, original promos with separate text overlays, and a ClipFlow-authored walkthrough sample that the worker renders without external assets or calls. Global processing pause, campaign pause/stop, and audit events persist in the owner database. A synthetic browser test verifies an actual playable render, and browser-restart evidence is produced by CI. An optional YouTube Data API reader has fixture coverage only and needs a restricted project key.

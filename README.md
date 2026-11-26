@@ -146,13 +146,32 @@ comes from the uploaded track file.
 Studio opens from the left sidebar. **Quick clips** takes a video without a
 subtitle file. **Podcast highlights** needs speech timestamps, supplied by
 SRT/WebVTT in the free preview or by an enabled transcription integration.
-The **Import from YouTube or Cloudflare R2** option accepts a direct HTTPS
-link to an R2 object or a single public YouTube video/Short. The experimental
-YouTube importer is for videos the owner is authorized to edit. It uses a
-compatible MP4 stream, with a limit of two minutes and 8 MiB. The preview
-does not ingest playlists, live streams, Spotify audio or streaming movie
-pages. Source access can fail on cloud hosts. Upload the source directly
-when an import is unavailable.
+**Use a Cloudflare R2 file link** accepts a direct HTTPS video link.
+**Convert a YouTube segment to MP4** accepts an authorized single video or
+Short and a 3–120 second interval, for example **From 12:00** and **To 13:00**.
+The original video may be longer. ClipFlow sends both timestamps to VidFetch,
+verifies that the returned MP4 matches the selected duration, and renders from
+that file. A subtitle file uses the original video's timestamps. If conversion
+fails, replace the source with a file already cut to the chosen window.
+
+#### Configure segment conversion on an approved cloud deployment
+
+Use a VidFetch account approved for the workflow and verify trim access and a
+hard spending cap with the provider before enabling it. The provider's public
+pricing page describes a free API plan and lists trim specifically under
+Growth at $99/month. The free plan's trim entitlement has not been verified.
+On a durable cloud deployment, store the API key as
+`CLIPFLOW_VIDFETCH_API_KEY`, configure the exact HTTPS hostname used for this
+account's signed delivery URLs in `CLIPFLOW_VIDFETCH_DELIVERY_ORIGIN`, set a
+positive `CLIPFLOW_VIDFETCH_MONTHLY_JOBS`, and explicitly enable
+`CLIPFLOW_VIDFETCH_ENABLED=true`. The Render launcher requires a writable
+mounted persistent disk for the reservation ledger. The worker accepts at most
+8 MiB per delivered segment, sends the key only to the VidFetch API and records
+one reservation per submission. Leave provider overages off. A live API run is
+required before offering the feature to customers.
+
+- [VidFetch range conversion](https://www.vidfetch.dev/solutions/youtube-clip-api)
+- [VidFetch pricing](https://www.vidfetch.dev/pricing)
 
 **Original promo** uses approved footage with an independent opening hook and closing call-to-action overlay. Hooks are categorized for comparisons. Campaign analytics only compare owner-entered snapshots with the same time window and sufficient clips and recorded views. When the server has a restricted `CLIPFLOW_YOUTUBE_DATA_API_KEY`, a recorded public YouTube post can also show on-demand official view, like and comment counts. These observations are timestamped, short-lived and displayed independently from historical owner-entered checkpoints. [YouTube `videos.list`](https://developers.google.com/youtube/v3/docs/videos/list)
 

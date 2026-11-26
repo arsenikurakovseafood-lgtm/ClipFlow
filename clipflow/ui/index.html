@@ -80,8 +80,17 @@
 <label>Campaign<select name="campaign"><option value="">Standalone clips</option></select></label>
 <label>What should the clips achieve?<textarea name="goal" maxlength="500" placeholder="Find motivational moments about persistence for people building their first app" required></textarea></label>
 <label>Campaign reference (optional)<input name="reference" type="url" maxlength="400" placeholder="https://…"><small>Optional track or campaign reference. Choose your actual video source below.</small></label>
-<label>Where is your video?<select name="sourceKind"><option value="file">Upload a video file</option><option value="link">Import from YouTube or Cloudflare R2</option><option value="sample">Use the ClipFlow walkthrough sample</option></select></label>
-<label id="batch-source-url" hidden>Video file link<input name="sourceUrl" type="url" maxlength="2400"><small id="youtube-source-help">Use a public YouTube video or Shorts link, or an HTTPS link to an R2 video file. Use videos you have permission to edit.</small></label>
+<label>Where is your video?<select name="sourceKind"><option value="file">Upload a video file</option><option value="youtube">Convert a YouTube segment to MP4</option><option value="link">Use a Cloudflare R2 file link</option><option value="sample">Use the ClipFlow walkthrough sample</option></select></label>
+<label id="batch-source-url" hidden>Video file link<input name="sourceUrl" type="url" maxlength="2400"><small id="youtube-source-help"></small></label>
+<div id="batch-segment" hidden>
+<div class="range">
+<label>From <input name="segmentStart" maxlength="10" placeholder="12:00"></label>
+<label>To <input name="segmentEnd" maxlength="10" placeholder="13:00"></label>
+</div>
+<small>Enter seconds, MM:SS or HH:MM:SS. Choose 3–120 seconds per batch.</small>
+<label class="check-option"><input name="authorized" type="checkbox"> I have permission to process and edit this video.</label>
+<p id="converter-availability" role="status"></p>
+</div>
 <label id="batch-source-file">Upload video<input name="source" type="file" accept=".mp4,.mov,.webm" required><small>Authorized MP4, MOV or WebM · up to 8 MiB and 2 minutes</small></label>
 <p id="batch-sample-note" hidden>The sample uses ClipFlow’s own footage with a prepared transcript or sample track. Choose up to four clips to test without uploading files.</p>
 <label id="batch-track" hidden>Track audio file<input name="music" type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac"><small>Upload your authorized track file. It replaces audio from the footage.</small></label>

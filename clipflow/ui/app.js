@@ -35,6 +35,9 @@ function sourceRecovery(job) {
     <small role="status"></small>`
   const button = form.querySelector('button')
   const status = form.querySelector('[role=status]')
+  if (job.trim_end !== null) {
+    form.querySelector('small').textContent = 'Use an MP4 already cut to the selected timecodes. Your track and settings are saved.'
+  }
   const video = form.elements.video
   if (!job.file_replacement) video.closest('label').hidden = true
   form.addEventListener('submit', async event => {
@@ -123,6 +126,12 @@ async function refresh() {
       detail.textContent = job.state === 'ready' ? 'Ready · ' + job.elapsed.toFixed(2) + ' s render'
         : (job.error || job.state[0].toUpperCase() + job.state.slice(1))
       row.append(detail)
+      if (job.trim_end !== null) {
+        const interval = document.createElement('small')
+        const timecode = seconds => new Date(seconds * 1000).toISOString().slice(11, 19)
+        interval.textContent = 'Source timecodes · ' + timecode(job.trim_start) + '–' + timecode(job.trim_end)
+        row.append(interval)
+      }
       if (job.state === 'ready') row.append(clipReview(job))
       if (job.source_replaceable) row.append(sourceRecovery(job))
       if (job.release_day) {

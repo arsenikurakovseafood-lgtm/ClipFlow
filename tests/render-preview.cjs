@@ -2,7 +2,7 @@ const assert = require('node:assert/strict')
 const {execFileSync, spawn} = require('node:child_process')
 const {randomBytes} = require('node:crypto')
 const {once} = require('node:events')
-const {mkdtemp, rm, writeFile} = require('node:fs/promises')
+const {mkdtemp, rm} = require('node:fs/promises')
 const {tmpdir} = require('node:os')
 const {join} = require('node:path')
 const {setTimeout: delay} = require('node:timers/promises')
@@ -14,11 +14,21 @@ async function main() {
   const base = 'http://localhost:' + port
   const password = randomBytes(32).toString('base64url')
   const executablePath = process.env.CLIPFLOW_CHROMIUM
-  // Simulate a provider rejection without sending any requests to YouTube.
-  await writeFile(join(root, 'prlimit'), '#!/bin/sh\necho "HTTP Error 403" >&2\nexit 1\n', {mode: 0o700})
-  const startPreview = 'import sys; from clipflow import render_preview; render_preview.DATA=sys.argv[1]; sys.exit(render_preview.main())'
+  // Allow the form to queue a conversion without a provider in this browser fixture.
+  const startPreview = [
+    'import sys',
+    'from clipflow import render_preview',
+    'render_preview.DATA = sys.argv[1]',
+    'original_settings = render_preview.service_settings',
+    'def fixture_settings():',
+    '    root, web, worker = original_settings()',
+    '    web.update(CLIPFLOW_VIDFETCH_ENABLED="true", CLIPFLOW_VIDFETCH_MONTHLY_JOBS="5")',
+    '    return root, web, worker',
+    'render_preview.service_settings = fixture_settings',
+    'sys.exit(render_preview.main())'
+  ].join('\n')
   const server = spawn('python3', ['-c', startPreview, root], {
-    env: {...process.env, PATH: root + ':' + process.env.PATH, PORT: port, CLIPFLOW_PREVIEW_PASSWORD: password},
+    env: {...process.env, PORT: port, CLIPFLOW_PREVIEW_PASSWORD: password},
     stdio: 'inherit'
   })
   const exited = once(server, 'exit')
@@ -137,13 +147,17 @@ async function main() {
     await batch.getByLabel('What are you making?').selectOption('music')
     await batch.getByLabel('What should the clips achieve?').fill('Promote the recovery fixture track')
     await batch.getByLabel('Track audio file').setInputFiles(track)
-    await batch.getByLabel('Where is your video?').selectOption('link')
+    await batch.getByLabel('Where is your video?').selectOption('youtube')
     await batch.getByLabel('Video file link').fill('https://www.youtube.com/shorts/abcdefghijk')
+    await batch.getByRole('textbox', {name: 'From', exact: true}).fill('12:00')
+    await batch.getByRole('textbox', {name: 'To', exact: true}).fill('12:08')
+    await batch.getByRole('checkbox', {name: 'I have permission to process and edit this video.'}).check()
     await batch.getByRole('button', {name: 'Create clips'}).click()
-    await page.getByText(/Video import queued/).waitFor()
+    await page.getByText(/Segment conversion queued/).waitFor()
     await page.getByRole('navigation').getByRole('link', {name: 'Content'}).click()
     const recovery = page.locator('.source-recovery')
     await recovery.getByLabel('Replacement video').waitFor()
+    await page.getByText('Source timecodes · 00:12:00–00:12:08').waitFor()
     const jobId = (await recovery.getAttribute('id')).replace('replace-source-', '')
     assert.equal((await fetch(base + '/api/batches/' + jobId + '/replace-source', {method: 'POST'})).status, 401)
     await recovery.getByLabel('Or direct Cloudflare R2 file link').fill('https://www.youtube.com/shorts/abcdefghijk')

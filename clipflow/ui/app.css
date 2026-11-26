@@ -114,3 +114,5 @@ textarea{min-height:100px;resize:vertical}
 #caption-availability{margin:0;color:var(--muted);font-size:.875rem}
 
 #youtube-source-help{display:block;margin-top:2px}
+#batch-segment:not([hidden]){display:grid;gap:8px}
+#converter-availability{margin:0}

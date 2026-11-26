@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from clipflow.auth import LoginUnavailable, OwnerAuth, PreviewAuth, session_header
 from clipflow.batch import BATCH_OUTPUT_BYTES, MAX_BATCH, MAX_TRANSCRIPT, PALETTES, direct_source_url
 from clipflow.campaigns import Campaigns, Conflict
+from clipflow.converter import DISABLED, monthly_limit, segment_range
 from clipflow.insights import Insights
 from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Limit, Queue
@@ -111,6 +112,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
                                     'direct_upload': self.server.media is not None,
                                     'ai_planner': planner_budget() > 0,
                                     'youtube_metrics': bool(os.environ.get('CLIPFLOW_YOUTUBE_DATA_API_KEY')),
+                                    'youtube_converter': monthly_limit() > 0,
                                     'upload_limit_mib': 8 if isinstance(self.server.auth, PreviewAuth) else 25,
                                     'clip_limit_seconds': 10 if isinstance(self.server.auth, PreviewAuth) else 60})
         files = {'/signin': ('signin.html', 'text/html'), '/signin.js': ('signin.js', 'text/javascript'),
@@ -366,10 +368,19 @@ class OwnerAPI(BaseHTTPRequestHandler):
                     raise ValueError()
             source_url = unquote(self.headers.get('X-Batch-Source-URL', '')).strip()
             sample = self.headers.get('X-Batch-Sample') == '1'
+            trim = None
             if source_url:
                 canonical = youtube_url(source_url)
                 if canonical:
                     source_url = canonical
+                    try:
+                        trim = segment_range(self.headers.get('X-Segment-Start', ''), self.headers.get('X-Segment-End', ''))
+                    except ValueError as error:
+                        return self.reply(400, {'error': str(error)})
+                    if self.headers.get('X-Source-Authorized') != '1':
+                        return self.reply(400, {'error': 'Confirm permission to process and edit the source video.'})
+                    if not monthly_limit():
+                        return self.reply(409, {'error': DISABLED})
                 else:
                     try:
                         direct_source_url(source_url)
@@ -412,7 +423,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
                            'count': count, 'days': days, 'source_seconds': 120, 'automatic_captions': automatic,
                            'clip_seconds': 10, 'size': size if private else 0, 'reference': reference, 'source_url': source_url,
                            'campaign_id': campaign_id, 'creative': creative, 'hook': hook, 'cta': cta,
-                           'sample': sample}
+                           'sample': sample, 'trim': trim}
         if private:
             data.update(storage='r2', mime=BUNDLE_MIME, parts=parts)
         spec = json.dumps(data)

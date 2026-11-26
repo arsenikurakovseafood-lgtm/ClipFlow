@@ -6,6 +6,7 @@ import sys
 import time
 
 from clipflow.auth import PreviewAuth
+from clipflow.converter import VidFetch
 
 DATA = '/var/lib/clipflow'
 PERSISTENT_DATA = '/var/data'
@@ -23,6 +24,11 @@ def service_settings():
         value = os.environ.get(name, '')
         if value.isascii() and value.isdecimal() and 0 < int(value) <= 2160:
             owner_env[name] = worker_env[name] = value
+    converter = VidFetch.configured() if path == PERSISTENT_DATA else None
+    if converter:
+        owner_env.update(CLIPFLOW_VIDFETCH_ENABLED='true', CLIPFLOW_VIDFETCH_MONTHLY_JOBS=str(converter.limit))
+        worker_env.update(CLIPFLOW_VIDFETCH_ENABLED='true', CLIPFLOW_VIDFETCH_MONTHLY_JOBS=str(converter.limit),
+                          CLIPFLOW_VIDFETCH_API_KEY=converter.key, CLIPFLOW_VIDFETCH_DELIVERY_ORIGIN=converter.delivery_origin)
     if os.environ.get('CLIPFLOW_PAID_WORKLOADS_ENABLED') == 'true':
         key = os.environ.get('OPENAI_API_KEY', '').strip()
         budgets = {name: os.environ.get(name, '') for name in ('CLIPFLOW_TRANSCRIPTION_MONTHLY_MICRO_USD',

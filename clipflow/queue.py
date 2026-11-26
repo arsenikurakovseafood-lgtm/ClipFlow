@@ -9,10 +9,11 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 
 from clipflow.batch import R2_IMPORT_FAILED
+from clipflow.converter import CONVERSION_FAILED
 from clipflow.youtube import ACCESS_REFUSED
 
 REPLACEABLE_BATCH = """state='failed' AND source_removed=0 AND finished_at>?
-    AND json_extract(spec,'$.batch')=1 AND error IN (?,?)
+    AND json_extract(spec,'$.batch')=1 AND error IN (?,?,?)
     AND (json_extract(spec,'$.campaign_id') IS NULL OR EXISTS
         (SELECT 1 FROM campaigns c WHERE c.id=json_extract(jobs.spec,'$.campaign_id') AND c.state<>'stopped'))"""
 
@@ -22,7 +23,7 @@ def source_retention_seconds():
 
 
 def replacement_window():
-    return time.time() - source_retention_seconds(), ACCESS_REFUSED, R2_IMPORT_FAILED
+    return time.time() - source_retention_seconds(), ACCESS_REFUSED, R2_IMPORT_FAILED, CONVERSION_FAILED
 
 
 def workloads_paused(db):
@@ -80,6 +81,53 @@ class Queue:
             db.execute("""CREATE TABLE IF NOT EXISTS workspace_audit (
                 event TEXT NOT NULL, subject TEXT NOT NULL, created_at TEXT NOT NULL
             )""")
+            db.execute("""CREATE TABLE IF NOT EXISTS converter_jobs (
+                job_id TEXT PRIMARY KEY, month TEXT NOT NULL, remote_id TEXT, deleted INTEGER NOT NULL DEFAULT 0
+            )""")
+            converter_columns = {row['name'] for row in db.execute('PRAGMA table_info(converter_jobs)')}
+            if 'deleted' not in converter_columns:
+                db.execute('ALTER TABLE converter_jobs ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0')
+
+    @staticmethod
+    def _conversion_active(db, job):
+        return not workloads_paused(db) and bool(db.execute("""SELECT 1 FROM jobs WHERE id=? AND lease_token=?
+            AND state='running' AND lease_until>? AND (json_extract(spec,'$.campaign_id') IS NULL OR EXISTS
+             (SELECT 1 FROM campaigns c WHERE c.id=json_extract(jobs.spec,'$.campaign_id') AND c.state='active'))""",
+            (job['id'], job['lease_token'], time.time())).fetchone())
+
+    def conversion_active(self, job):
+        with self.transaction() as db:
+            return self._conversion_active(db, job)
+
+    def reserve_conversion(self, job, limit):
+        month = datetime.now(timezone.utc).strftime('%Y-%m')
+        with self.transaction() as db:
+            if not self._conversion_active(db, job):
+                return None, False
+            existing = db.execute('SELECT remote_id,deleted FROM converter_jobs WHERE job_id=?', (job['id'],)).fetchone()
+            if existing:
+                return (None if existing['deleted'] else existing['remote_id']), False
+            count = db.execute('SELECT COUNT(*) FROM converter_jobs WHERE month=?', (month,)).fetchone()[0]
+            if count >= limit:
+                return None, False
+            db.execute('INSERT INTO converter_jobs (job_id,month) VALUES (?,?)', (job['id'], month))
+            return None, True
+
+    def bind_conversion(self, job, remote_id):
+        with self.transaction() as db:
+            return self._conversion_active(db, job) and bool(db.execute(
+                'UPDATE converter_jobs SET remote_id=? WHERE job_id=? AND remote_id IS NULL',
+                (remote_id, job['id'])).rowcount)
+
+    def pending_converter_cleanup(self):
+        with self.transaction() as db:
+            return db.execute("""SELECT c.job_id,c.remote_id FROM converter_jobs c JOIN jobs j ON c.job_id=j.id
+                WHERE c.remote_id IS NOT NULL AND c.deleted=0
+                AND j.state IN ('ready','failed','prepared','cancelled','expired') LIMIT 5""").fetchall()
+
+    def mark_conversion_deleted(self, job_id, remote_id):
+        with self.transaction() as db:
+            db.execute('UPDATE converter_jobs SET deleted=1 WHERE job_id=? AND remote_id=?', (job_id, remote_id))
 
     def control(self, pause=None):
         with self.transaction() as db:
@@ -277,6 +325,8 @@ class Queue:
                 reserved,output_bytes,lease_token,review,
                 CASE WHEN {REPLACEABLE_BATCH} THEN 1 ELSE 0 END AS source_replaceable,
                 json_extract(spec,'$.campaign_id') AS campaign_id,
+                json_extract(spec,'$.trim.start') AS trim_start,
+                json_extract(spec,'$.trim.end') AS trim_end,
                 json_extract(spec,'$.release_day') AS release_day,
                 json_extract(spec,'$.release_days') AS release_days,
                 json_extract(spec,'$.reference') AS reference,
