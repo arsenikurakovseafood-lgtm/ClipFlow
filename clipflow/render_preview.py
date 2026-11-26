@@ -8,6 +8,26 @@ import time
 from clipflow.auth import PreviewAuth
 
 DATA = '/var/lib/clipflow'
+PERSISTENT_DATA = '/var/data'
+
+
+def service_settings():
+    env = {name: value for name, value in os.environ.items()
+           if not name.startswith(('CLIPFLOW_', 'OPENAI_'))}
+    env['CLIPFLOW_INTERNAL_RENDER_PREVIEW'] = 'true'
+    path = PERSISTENT_DATA if os.path.ismount(PERSISTENT_DATA) and os.access(PERSISTENT_DATA, os.W_OK) else DATA
+    owner_env, worker_env = dict(env), dict(env)
+    if os.environ.get('CLIPFLOW_PAID_WORKLOADS_ENABLED') == 'true':
+        key = os.environ.get('OPENAI_API_KEY', '').strip()
+        budget = os.environ.get('CLIPFLOW_TRANSCRIPTION_MONTHLY_MICRO_USD', '')
+        if path == PERSISTENT_DATA and key and budget.isascii() and budget.isdecimal() and 0 < int(budget):
+            owner_env.update(CLIPFLOW_PAID_WORKLOADS_ENABLED='true',
+                             CLIPFLOW_TRANSCRIPTION_MONTHLY_MICRO_USD=budget)
+            worker_env.update(owner_env, OPENAI_API_KEY=key)
+        else:
+            print('Automatic captions paused. Configure a mounted /var/data disk, an API key, and a positive USD budget.',
+                  file=sys.stderr)
+    return path, owner_env, worker_env
 
 
 def main():
@@ -20,10 +40,7 @@ def main():
     except ValueError as error:
         sys.exit(str(error))
 
-    # Free preview uses its own settings and never calls paid providers.
-    env = {key: value for key, value in os.environ.items()
-           if not key.startswith(('CLIPFLOW_', 'OPENAI_'))}
-    env['CLIPFLOW_INTERNAL_RENDER_PREVIEW'] = 'true'
+    path, owner_env, worker_env = service_settings()
 
     children = []
     stopping = False
@@ -35,11 +52,11 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     try:
-        children.append(subprocess.Popen([sys.executable, '-m', 'clipflow.worker', DATA], env=env))
+        children.append(subprocess.Popen([sys.executable, '-m', 'clipflow.worker', path], env=worker_env))
         children.append(subprocess.Popen([
-            sys.executable, '-m', 'clipflow.web', DATA, '--bind', '0.0.0.0',
+            sys.executable, '-m', 'clipflow.web', path, '--bind', '0.0.0.0',
             '--port', str(port), '--render-preview',
-        ], env={**env, 'CLIPFLOW_PREVIEW_PASSWORD': password}))
+        ], env={**owner_env, 'CLIPFLOW_PREVIEW_PASSWORD': password}))
         while not stopping:
             if any(child.poll() is not None for child in children):
                 return 1

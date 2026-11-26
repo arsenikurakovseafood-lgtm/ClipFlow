@@ -74,10 +74,12 @@
 <label>What should the clips achieve?<textarea name="goal" maxlength="500" placeholder="Find motivational moments about persistence for people building their first app" required></textarea></label>
 <label>YouTube or Spotify reference (optional)<input name="reference" type="url" maxlength="400" placeholder="https://…"><small>Saved as a reference. Upload the authorized source files below.</small></label>
 <label>Where is your video?<select name="sourceKind"><option value="file">Upload a video file</option><option value="link">Use a direct Cloudflare R2 file link</option></select></label>
-<label id="batch-source-url" hidden>Video file link<input name="sourceUrl" type="url" maxlength="2400"><small>Paste the HTTPS link to the actual video file in Cloudflare R2.</small></label>
+<label id="batch-source-url" hidden>Video file link<input name="sourceUrl" type="url" maxlength="2400"><small>Use a direct Cloudflare R2 video file link. YouTube pages go in the reference field above.</small></label>
 <label id="batch-source-file">Upload video<input name="source" type="file" accept=".mp4,.mov,.webm" required><small>Authorized MP4, MOV or WebM · up to 8 MiB and 2 minutes</small></label>
 <label id="batch-track" hidden>Track audio file<input name="music" type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac"><small>Upload your authorized track file. It replaces audio from the footage.</small></label>
-<label>Subtitle file (.srt or .vtt) <input name="captions" type="file" accept=".srt,.vtt"><small id="batch-caption-help">Required for spoken highlights in this preview. Use SRT or WebVTT.</small></label>
+<label class="check-option"><input type="checkbox" name="automaticCaptions" disabled>Generate subtitles from audio</label>
+<p id="caption-availability" role="status"></p>
+<label>Subtitle file override (.srt or .vtt) <input name="captions" type="file" accept=".srt,.vtt"><small id="batch-caption-help">Required for spoken highlights in this preview. Use SRT or WebVTT.</small></label>
 <div class="campaign-fields">
 <label>Number of clips<input name="count" type="number" min="1" max="10" value="3" required></label>
 <label>Release window (days)<input name="days" type="number" min="1" max="30" value="3" required></label>
@@ -132,7 +134,7 @@
 <article><h2>YouTube</h2><p>Manual publishing · connection unavailable</p><a href="https://studio.youtube.com/" target="_blank" rel="noopener noreferrer">Open YouTube Studio</a></article>
 </div>
 </section>
-<footer>Cloud demo · Temporary storage · No paid provider calls</footer>
+<footer>Owner Studio · Review clips before publishing</footer>
 </main>
 </div>
 </body></html>

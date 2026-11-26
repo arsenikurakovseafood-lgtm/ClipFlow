@@ -332,7 +332,10 @@ class OwnerAPI(BaseHTTPRequestHandler):
                     raise ValueError()
             source_url = unquote(self.headers.get('X-Batch-Source-URL', '')).strip()
             if source_url:
-                direct_source_url(source_url)
+                try:
+                    direct_source_url(source_url)
+                except ValueError:
+                    return self.reply(400, {'error': 'This box needs a direct Cloudflare R2 video file link. For YouTube, add the link as a reference and upload an authorized source video.'})
             name = unquote(self.headers.get('X-Clip-Name', 'Batch source'))[:120]
             if not (((0 < video <= 8 * 1024 * 1024 and not source_url) or (video == 0 and source_url))
                     and 0 <= music <= 8 * 1024 * 1024
@@ -343,14 +346,17 @@ class OwnerAPI(BaseHTTPRequestHandler):
                 raise ValueError()
         except (TypeError, ValueError):
             return self.reply(400, {'error': 'Check the source, goal, clip count and release window. Direct links must point to a Cloudflare R2 file.'})
-        if mode == 'speech' and (music or not (captions or self.server.transcription_enabled)):
-            return self.reply(400, {'error': 'Spoken highlights require timed SRT or VTT subtitles in this preview'})
+        automatic = self.headers.get('X-Batch-Auto-Captions') == '1' or (mode == 'speech' and not captions)
+        if automatic and not self.server.transcription_enabled:
+            return self.reply(409, {'error': 'Automatic captions are off for this deployment. Upload timed subtitles or enable OpenAI transcription in Render.'})
+        if mode == 'speech' and not (captions or automatic):
+            return self.reply(400, {'error': 'This mode needs automatic captions or a timed subtitle file'})
         if mode != 'music' and music:
             return self.reply(400, {'error': 'Select Music promos to add a separate track'})
         if mode == 'music' and not music:
             return self.reply(400, {'error': 'Attach the authorized track audio file for music promos'})
         spec = json.dumps({'batch': True, 'mode': mode, 'caption_style': style, 'goal': goal,
-                           'count': count, 'days': days, 'source_seconds': 120,
+                           'count': count, 'days': days, 'source_seconds': 120, 'automatic_captions': automatic,
                            'clip_seconds': 10, 'size': 0, 'reference': reference, 'source_url': source_url})
         try:
             job_id, created = self.server.queue.reserve(key, 'Batch: ' + name, spec,

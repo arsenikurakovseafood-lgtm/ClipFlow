@@ -140,3 +140,22 @@ The **Use a direct Cloudflare R2 file link** source option accepts the direct
 HTTPS location of an authorized object. The worker imports it without
 redirects, subject to the same 8 MiB limit. An ordinary YouTube, streaming
 movie, or Spotify page is a reference.
+
+### Automatic subtitles on Render
+
+Automatic speech and vocal subtitles use the existing OpenAI transcription adapter.
+The Render launcher only enables paid calls with a writable persistent disk
+mounted at `/var/data`. Render Free has ephemeral storage, so a local spend
+ledger on Free would reset on restart. Enable only after budget approval.
+
+In Render Environment, set `OPENAI_API_KEY`, set
+`CLIPFLOW_PAID_WORKLOADS_ENABLED=true`, and set a positive
+`CLIPFLOW_TRANSCRIPTION_MONTHLY_MICRO_USD` (for example, `1000000` for a $1
+monthly reservation cap). Keep the key in Render, never in Git or chat.
+Studio will offer **Generate subtitles from audio**. Spoken clips use
+source speech. Music promos use vocals from the uploaded track excerpt.
+Approximate six-second captions are generated from audio windows; word-level
+alignment and live accuracy have not been validated.
+
+- [Render persistent disks](https://render.com/docs/disks)
+- [OpenAI transcription model and pricing](https://developers.openai.com/api/docs/models/gpt-transcribe)

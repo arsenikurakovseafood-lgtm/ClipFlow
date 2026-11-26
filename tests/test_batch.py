@@ -78,3 +78,40 @@ Keep showing up for your goal.
             opener.open.return_value = stream
             fetch_source(url, output, opener)
             self.assertEqual(output.read_bytes(), b'preview fixture')
+
+    def test_automatic_track_captions_align_to_video_time(self):
+        from unittest.mock import Mock, patch
+        from clipflow.worker import render_job
+
+        transcriber = Mock()
+        transcriber.captions.return_value = [Cue(6.5, 8, 'Generated lyric')]
+        spec = {'batch_parent': 'batch', 'start': 20, 'end': 23,
+                'music_start': 6, 'cues': [], 'automatic_captions': True,
+                'caption_style': 'red'}
+        with patch('clipflow.worker.probe', return_value={'format': {'duration': '20'}}), \
+                patch('clipflow.worker.render') as encoded:
+            render_job(Mock(), {'id': 'clip'}, spec, Path('input/source'), Path('output'), transcriber)
+        self.assertEqual(transcriber.captions.call_args.args[-2:], (6, 9))
+        self.assertEqual(encoded.call_args.args[-1], [Cue(20.5, 22, 'Generated lyric')])
+        self.assertEqual(encoded.call_args.kwargs['caption_color'], '004522F0')
+
+    def test_render_paid_captions_require_persistent_disk_and_keep_key_in_worker(self):
+        from unittest.mock import patch
+        from clipflow.render_preview import DATA, PERSISTENT_DATA, service_settings
+
+        settings = {'CLIPFLOW_PAID_WORKLOADS_ENABLED': 'true',
+                    'CLIPFLOW_TRANSCRIPTION_MONTHLY_MICRO_USD': '1000000', 'OPENAI_API_KEY': 'fixture'}
+        with patch.dict('os.environ', settings, clear=True), \
+                patch('clipflow.render_preview.os.path.ismount', return_value=False):
+            path, web, worker = service_settings()
+            self.assertEqual(path, DATA)
+            self.assertNotIn('OPENAI_API_KEY', worker)
+            self.assertNotIn('CLIPFLOW_PAID_WORKLOADS_ENABLED', web)
+        with patch.dict('os.environ', settings, clear=True), \
+                patch('clipflow.render_preview.os.path.ismount', return_value=True), \
+                patch('clipflow.render_preview.os.access', return_value=True):
+            path, web, worker = service_settings()
+            self.assertEqual(path, PERSISTENT_DATA)
+            self.assertNotIn('OPENAI_API_KEY', web)
+            self.assertEqual(worker['OPENAI_API_KEY'], 'fixture')
+            self.assertEqual(worker['CLIPFLOW_TRANSCRIPTION_MONTHLY_MICRO_USD'], '1000000')

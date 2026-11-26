@@ -25,12 +25,19 @@ def render_job(queue, job, data, source, output, transcriber):
             raise ValueError('Preview source exceeds the two-minute or 1920-pixel limit')
     start_time, end_time = data['start'], data['end']
     cues = [Cue(**cue) for cue in data['cues']]
+    music = source.parent / 'music' if 'music_start' in data else None
     if data.get('automatic_captions'):
         if transcriber is None:
             raise TranscriptionUnavailable('Automatic captions are paused.')
-        cues = transcriber.captions(queue, job, source, start_time, end_time)
+        if music is None:
+            cues = transcriber.captions(queue, job, source, start_time, end_time)
+        else:
+            offset = data['music_start']
+            end = min(offset + end_time - start_time, float(probe(music)['format']['duration']))
+            timed = transcriber.captions(queue, job, music, offset, end)
+            cues = [Cue(cue.start - offset + start_time, cue.end - offset + start_time, cue.text)
+                    for cue in timed]
     if data.get('batch_parent'):
-        music = source.parent / 'music' if 'music_start' in data else None
         return render(source, output, start_time, end_time, cues,
                       caption_color=PALETTES[data['caption_style']], music=music,
                       music_start=data.get('music_start', 0), output_limit=BATCH_OUTPUT_BYTES)

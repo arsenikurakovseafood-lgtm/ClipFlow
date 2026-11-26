@@ -180,6 +180,7 @@ def stage_batch(root, queue, job, data, transcriber=None):
         raise BatchError('Batch source must be 3 seconds to 2 minutes, with dimensions up to 1920 px.')
     captions = folder / 'captions'
     cues = parse_captions(captions.read_text(encoding='utf-8-sig')) if captions.exists() else []
+    auto = data.get('automatic_captions') and not cues
     if data['mode'] == 'speech':
         if not cues:
             if not transcriber:
@@ -191,7 +192,8 @@ def stage_batch(root, queue, job, data, transcriber=None):
         track_seconds = float(track['format']['duration'])
         if not 3 <= track_seconds <= 1800 or not any(stream['codec_type'] == 'audio' for stream in track['streams']):
             raise BatchError('Upload a playable track of at least three seconds.')
-        windows = scene_windows(source, duration, data['count'], data['clip_seconds'])
+        limit = min(data['clip_seconds'], track_seconds) if auto else data['clip_seconds']
+        windows = scene_windows(source, duration, data['count'], limit)
     else:
         windows = scene_windows(source, duration, data['count'], data['clip_seconds'])
     if not windows:
@@ -210,6 +212,9 @@ def stage_batch(root, queue, job, data, transcriber=None):
                 'cues': [asdict(cue) for cue in cues if cue.end > start and cue.start < end]}
         if data['mode'] == 'music':
             clip['music_start'] = (number - 1) * 6 % max(1, track_seconds - (end - start))
+            clip['music_start'] = min(clip['music_start'], max(0, track_seconds - (end - start)))
+        if auto and data['mode'] != 'speech':
+            clip['automatic_captions'] = True
         children.append((child_id, title, clip))
 
     queue.expand_batch(job, children, BATCH_OUTPUT_BYTES,
