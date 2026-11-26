@@ -72,9 +72,9 @@
 <form id="batch-form" hidden>
 <label>What are you making?<select name="mode"><option value="visual">Quick clips · use the video as it is</option><option value="speech">Podcast highlights · choose by what is said</option><option value="music">Music promos · use your song as the audio</option></select></label>
 <label>What should the clips achieve?<textarea name="goal" maxlength="500" placeholder="Find motivational moments about persistence for people building their first app" required></textarea></label>
-<label>YouTube or Spotify reference (optional)<input name="reference" type="url" maxlength="400" placeholder="https://…"><small>Saved as a reference. Upload the authorized source files below.</small></label>
-<label>Where is your video?<select name="sourceKind"><option value="file">Upload a video file</option><option value="link">Use a direct Cloudflare R2 file link</option></select></label>
-<label id="batch-source-url" hidden>Video file link<input name="sourceUrl" type="url" maxlength="2400"><small>Use a direct Cloudflare R2 video file link. YouTube pages go in the reference field above.</small></label>
+<label>Campaign reference (optional)<input name="reference" type="url" maxlength="400" placeholder="https://…"><small>Optional track or campaign reference. Choose your actual video source below.</small></label>
+<label>Where is your video?<select name="sourceKind"><option value="file">Upload a video file</option><option value="link">Import from YouTube or Cloudflare R2</option></select></label>
+<label id="batch-source-url" hidden>Video file link<input name="sourceUrl" type="url" maxlength="2400"><small id="youtube-source-help">Use a public YouTube video or Shorts link, or an HTTPS link to an R2 video file. Use videos you have permission to edit.</small></label>
 <label id="batch-source-file">Upload video<input name="source" type="file" accept=".mp4,.mov,.webm" required><small>Authorized MP4, MOV or WebM · up to 8 MiB and 2 minutes</small></label>
 <label id="batch-track" hidden>Track audio file<input name="music" type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac"><small>Upload your authorized track file. It replaces audio from the footage.</small></label>
 <label class="check-option"><input type="checkbox" name="automaticCaptions" disabled>Generate subtitles from audio</label>

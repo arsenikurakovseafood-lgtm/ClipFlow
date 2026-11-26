@@ -67,3 +67,8 @@ planner prioritizes the maximum number of non-overlapping excerpts before
 ranking goal relevance. The same batch can be scheduled into the approved
 campaign's manual handoff queue. R2 batch upload, publishing APIs, social
 analytics ingestion and creative feedback remain pending.
+
+Owner Preview includes an experimental YouTube source adapter. Tests cover
+input normalization, staging, size guards, and access-error handling using
+fixtures. A metadata-only request from Codex Cloud was rejected by the cloud
+proxy. Successful network ingestion on Render has not been verified.

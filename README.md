@@ -127,8 +127,8 @@ Review the renders, approve a campaign, and select **Schedule entire batch**
 with a first release time. The queue spreads the clips across the selected
 release days. Campaign handoff remains manual.
 
-YouTube and Spotify URLs can be linked as references. Files for editing come
-from authorized uploads. Media is never fetched from those URLs.
+Spotify URLs can be stored as campaign references. Audio for editing
+comes from the uploaded track file.
 
 - [YouTube API developer policies](https://developers.google.com/youtube/terms/developer-policies/)
 - [Spotify developer policy](https://developer.spotify.com/policy)
@@ -136,10 +136,13 @@ from authorized uploads. Media is never fetched from those URLs.
 Studio opens from the left sidebar. **Quick clips** takes a video without a
 subtitle file. **Podcast highlights** needs speech timestamps, supplied by
 SRT/WebVTT in the free preview or by an enabled transcription integration.
-The **Use a direct Cloudflare R2 file link** source option accepts the direct
-HTTPS location of an authorized object. The worker imports it without
-redirects, subject to the same 8 MiB limit. An ordinary YouTube, streaming
-movie, or Spotify page is a reference.
+The **Import from YouTube or Cloudflare R2** option accepts a direct HTTPS
+link to an R2 object or a single public YouTube video/Short. The experimental
+YouTube importer is for videos the owner is authorized to edit. It uses a
+compatible MP4 stream, with a limit of two minutes and 8 MiB. The preview
+does not ingest playlists, live streams, Spotify audio or streaming movie
+pages. Source access can fail on cloud hosts. Upload the source directly
+when an import is unavailable.
 
 ### Automatic subtitles on Render
 

@@ -54,9 +54,6 @@ batchForm.addEventListener('submit', async event => {
   button.disabled = true
   batchKey ||= crypto.randomUUID()
   try {
-    if (sourceUrl && /(?:^|\.)(?:youtube\.com|youtu\.be)$/.test(new URL(sourceUrl).hostname)) {
-      throw new Error('A YouTube page cannot supply the video file. Put that link in the reference field and upload your authorized original.')
-    }
     const response = await fetch('/api/batches', {
       method: 'POST',
       headers: {

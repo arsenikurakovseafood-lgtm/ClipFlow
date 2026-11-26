@@ -9,6 +9,7 @@ from urllib.request import Request, build_opener
 from uuid import UUID, uuid5
 
 from clipflow.auth import NoRedirect
+from clipflow.youtube import ImportFailed, fetch_youtube, youtube_url
 
 from clipflow.render import Cue, LOCAL_PROTOCOLS, probe
 
@@ -170,7 +171,13 @@ def stage_batch(root, queue, job, data, transcriber=None):
     folder = root / job['id']
     source = folder / 'source'
     if data.get('source_url') and not source.exists():
-        fetch_source(data['source_url'], source)
+        if youtube_url(data['source_url']):
+            try:
+                fetch_youtube(data['source_url'], source)
+            except ImportFailed as error:
+                raise BatchError(str(error)) from error
+        else:
+            fetch_source(data['source_url'], source)
     info = probe(source)
     duration = float(info['format']['duration'])
     if not (3 <= duration <= data['source_seconds']) or not any(

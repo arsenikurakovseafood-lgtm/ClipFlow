@@ -16,6 +16,7 @@ from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Limit, Queue
 from clipflow.r2 import MEDIA_TYPES, PrivateMedia
 from clipflow.render import MAX_OUTPUT_BYTES
+from clipflow.youtube import youtube_url
 from clipflow.transcription import enabled as transcription_enabled
 
 MAX_UPLOAD = 25 * 1024 * 1024
@@ -332,10 +333,14 @@ class OwnerAPI(BaseHTTPRequestHandler):
                     raise ValueError()
             source_url = unquote(self.headers.get('X-Batch-Source-URL', '')).strip()
             if source_url:
-                try:
-                    direct_source_url(source_url)
-                except ValueError:
-                    return self.reply(400, {'error': 'This box needs a direct Cloudflare R2 video file link. For YouTube, add the link as a reference and upload an authorized source video.'})
+                canonical = youtube_url(source_url)
+                if canonical:
+                    source_url = canonical
+                else:
+                    try:
+                        direct_source_url(source_url)
+                    except ValueError:
+                        return self.reply(400, {'error': 'Enter a public YouTube video link or a direct Cloudflare R2 file link.'})
             name = unquote(self.headers.get('X-Clip-Name', 'Batch source'))[:120]
             if not (((0 < video <= 8 * 1024 * 1024 and not source_url) or (video == 0 and source_url))
                     and 0 <= music <= 8 * 1024 * 1024
@@ -345,7 +350,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
                     and style in PALETTES and mode in ('visual', 'speech', 'music')):
                 raise ValueError()
         except (TypeError, ValueError):
-            return self.reply(400, {'error': 'Check the source, goal, clip count and release window. Direct links must point to a Cloudflare R2 file.'})
+            return self.reply(400, {'error': 'Check the source, goal, clip count and release window. Use a public YouTube link or a direct Cloudflare R2 file link.'})
         automatic = self.headers.get('X-Batch-Auto-Captions') == '1' or (mode == 'speech' and not captions)
         if automatic and not self.server.transcription_enabled:
             return self.reply(409, {'error': 'Automatic captions are off for this deployment. Upload timed subtitles or enable OpenAI transcription in Render.'})
