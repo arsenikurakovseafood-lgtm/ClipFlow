@@ -23,7 +23,12 @@ class CampaignTests(unittest.TestCase):
             with self.assertRaises(Conflict):
                 campaign.schedule(identifier, payload)
             campaign.transition(identifier, 'approve')
+            with self.assertRaises(Conflict):
+                campaign.schedule(identifier, payload)
+            campaign.review_clip(job_id, 'approved')
             campaign.schedule(identifier, payload)
+            with self.assertRaises(Conflict):
+                campaign.review_clip(job_id, 'rejected')
             with self.assertRaises(Conflict):
                 campaign.schedule(identifier, payload)
             item = campaign.snapshot()['posts'][0]
@@ -39,3 +44,26 @@ class CampaignTests(unittest.TestCase):
             self.assertEqual(campaign.snapshot()['posts'][0]['state'], 'handed_off')
             with self.assertRaises(Conflict):
                 campaign.transition(identifier, 'resume')
+
+    def test_linked_jobs_follow_campaign_pause_and_stop(self):
+        with tempfile.TemporaryDirectory() as root:
+            queue = Queue(Path(root) / 'jobs.sqlite3')
+            campaigns = Campaigns(queue)
+            identifier = campaigns.create({'name': 'Preview', 'goal': 'Test pause', 'channel': 'youtube',
+                                           'duration_days': 3, 'cadence_days': 1, 'budget_cents': 0})
+            campaigns.transition(identifier, 'approve')
+            job_id, _ = queue.reserve('fixture', 'Linked', '{"campaign_id":"' + identifier + '"}',
+                                      4, cost=0, budget=0, quota=8)
+            queue.uploaded(job_id)
+            campaigns.transition(identifier, 'pause')
+            self.assertIsNone(queue.claim())
+            campaigns.transition(identifier, 'resume')
+            queue.control(True)
+            self.assertTrue(Queue(queue.path).control()['paused'])
+            self.assertIsNone(queue.claim())
+            queue.control(False)
+            job = queue.claim()
+            self.assertEqual(job['id'], job_id)
+            campaigns.transition(identifier, 'stop')
+            self.assertFalse(queue.finish(job, output_bytes=4))
+            self.assertEqual(queue.get(job_id)['state'], 'cancelled')

@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from clipflow.auth import LoginUnavailable, OwnerAuth, PreviewAuth, session_header
 from clipflow.batch import BATCH_OUTPUT_BYTES, MAX_BATCH, MAX_TRANSCRIPT, PALETTES, direct_source_url
 from clipflow.campaigns import Campaigns, Conflict
+from clipflow.insights import Insights
 from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Limit, Queue
 from clipflow.r2 import MEDIA_TYPES, PrivateMedia
@@ -106,13 +107,14 @@ class OwnerAPI(BaseHTTPRequestHandler):
                                     'direct_upload': self.server.media is not None,
                                     'batch_editing': self.server.media is None,
                                     'ai_planner': planner_budget() > 0,
+                                    'youtube_metrics': bool(os.environ.get('CLIPFLOW_YOUTUBE_DATA_API_KEY')),
                                     'upload_limit_mib': 8 if isinstance(self.server.auth, PreviewAuth) else 25,
                                     'clip_limit_seconds': 10 if isinstance(self.server.auth, PreviewAuth) else 60})
         files = {'/signin': ('signin.html', 'text/html'), '/signin.js': ('signin.js', 'text/javascript'),
                  '/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'),
                  '/app.css': ('app.css', 'text/css'),
                  '/campaigns.js': ('campaigns.js', 'text/javascript'), '/batch.js': ('batch.js', 'text/javascript'),
-                 '/workspace.js': ('workspace.js', 'text/javascript')}
+                 '/workspace.js': ('workspace.js', 'text/javascript'), '/insights.js': ('insights.js', 'text/javascript')}
         if url.path in files:
             name, mime = files[url.path]
             content = (WEB / name).read_bytes()
@@ -124,6 +126,10 @@ class OwnerAPI(BaseHTTPRequestHandler):
             return self.reply(200, self.server.plans.list())
         if url.path == '/api/campaigns':
             return self.reply(200, self.server.campaigns.snapshot())
+        if url.path == '/api/insights':
+            return self.reply(200, self.server.insights.snapshot())
+        if url.path == '/api/settings':
+            return self.reply(200, self.server.queue.control())
         if url.path == '/api/jobs':
             jobs = self.server.queue.all()
             return self.reply(200, [{k: v for k, v in job.items() if k != 'lease_token'} for job in jobs])
@@ -201,10 +207,29 @@ class OwnerAPI(BaseHTTPRequestHandler):
                 return self.reply(202, {'id': self.server.plans.request(data.get('goal'), planner_budget())})
             if self.path == '/api/campaigns':
                 return self.reply(201, {'id': self.server.campaigns.create(data)})
+            if self.path == '/api/settings':
+                if type(data.get('paused')) is not bool:
+                    raise ValueError('Choose whether processing should be paused')
+                return self.reply(200, self.server.queue.control(data['paused']))
             match = re.fullmatch(r'/api/campaigns/([0-9a-f]{32})/(approve|pause|resume|stop|schedule|schedule-batch)', self.path)
-            post = re.fullmatch(r'/api/manual-posts/([0-9a-f]{32})/handoff', self.path)
+            post = re.fullmatch(r'/api/manual-posts/([0-9a-f]{32})/(handoff|record|metrics|youtube-metrics)', self.path)
+            review = re.fullmatch(r'/api/clips/([0-9a-f]{32})/review', self.path)
+            entry = re.fullmatch(r'/api/ledger/([0-9a-f-]{36})/confirm', self.path)
             if post:
-                self.server.campaigns.complete(post[1])
+                if post[2] == 'handoff':
+                    self.server.campaigns.complete(post[1])
+                elif post[2] == 'record':
+                    self.server.campaigns.report_post(post[1], data)
+                elif post[2] == 'youtube-metrics':
+                    self.server.insights.read_youtube(post[1], os.environ.get('CLIPFLOW_YOUTUBE_DATA_API_KEY', ''))
+                else:
+                    self.server.insights.record_metrics(post[1], data)
+            elif review:
+                self.server.campaigns.review_clip(review[1], data.get('review'))
+            elif self.path == '/api/ledger':
+                self.server.insights.add_entry(data)
+            elif entry:
+                self.server.insights.confirm_entry(entry[1])
             elif not match:
                 return self.reply(404, {'error': 'Item unavailable'})
             elif match[2] == 'schedule':
@@ -226,7 +251,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
             return self.session_request()
         if not self.authenticate(self.path):
             return
-        if self.path == '/api/plans' or self.path.startswith(('/api/campaigns', '/api/manual-posts')):
+        if self.path in ('/api/plans', '/api/settings') or self.path.startswith(('/api/campaigns', '/api/manual-posts', '/api/clips/', '/api/ledger')):
             return self.campaign_request()
         if self.path == '/api/batches':
             return self.batch_request()
@@ -335,6 +360,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
                         and address.netloc in ('www.youtube.com', 'youtube.com', 'youtu.be', 'open.spotify.com')):
                     raise ValueError()
             source_url = unquote(self.headers.get('X-Batch-Source-URL', '')).strip()
+            sample = self.headers.get('X-Batch-Sample') == '1'
             if source_url:
                 canonical = youtube_url(source_url)
                 if canonical:
@@ -345,30 +371,44 @@ class OwnerAPI(BaseHTTPRequestHandler):
                     except ValueError:
                         return self.reply(400, {'error': 'Enter a public YouTube video link or a direct Cloudflare R2 file link.'})
             name = unquote(self.headers.get('X-Clip-Name', 'Batch source'))[:120]
-            if not (((0 < video <= 8 * 1024 * 1024 and not source_url) or (video == 0 and source_url))
+            if not (((0 < video <= SOURCE_LIMIT and not source_url and not sample)
+                     or (video == 0 and bool(source_url) != sample))
                     and 0 <= music <= 8 * 1024 * 1024
                     and 0 <= captions <= MAX_TRANSCRIPT and total == video + music + captions
                     and re.fullmatch(r'[0-9a-f-]{36}', key)
                     and 1 <= count <= MAX_BATCH and 1 <= days <= 30 and 1 <= len(goal) <= 500
-                    and style in PALETTES and mode in ('visual', 'speech', 'music')):
+                    and style in PALETTES and mode in ('visual', 'speech', 'music', 'original')):
                 raise ValueError()
         except (TypeError, ValueError):
             return self.reply(400, {'error': 'Check the source, goal, clip count and release window. Use a public YouTube link or a direct Cloudflare R2 file link.'})
-        automatic = self.headers.get('X-Batch-Auto-Captions') == '1' or (mode == 'speech' and not captions)
+        automatic = self.headers.get('X-Batch-Auto-Captions') == '1' or (mode == 'speech' and not captions and not sample)
         if automatic and not self.server.transcription_enabled:
             return self.reply(409, {'error': 'Automatic captions are off for this deployment. Upload timed subtitles or enable OpenAI transcription in Render.'})
-        if mode == 'speech' and not (captions or automatic):
+        if mode == 'speech' and not (captions or automatic or sample):
             return self.reply(400, {'error': 'This mode needs automatic captions or a timed subtitle file'})
         if mode != 'music' and music:
             return self.reply(400, {'error': 'Select Music promos to add a separate track'})
-        if mode == 'music' and not music:
+        if mode == 'music' and not (music or sample):
             return self.reply(400, {'error': 'Attach the authorized track audio file for music promos'})
+        campaign_id = self.headers.get('X-Campaign-ID') or None
+        if campaign_id and not re.fullmatch(r'[0-9a-f]{32}', campaign_id):
+            return self.reply(400, {'error': 'Select a valid campaign'})
+        creative = self.headers.get('X-Creative-Format', 'standard')
+        if creative not in ('standard', 'question', 'statement', 'result'):
+            return self.reply(400, {'error': 'Select a valid hook format'})
+        hook = unquote(self.headers.get('X-Creative-Hook', '')).strip()
+        cta = unquote(self.headers.get('X-Creative-CTA', '')).strip()
+        if (len(hook) > 100 or len(cta) > 100 or (creative != 'standard' and not hook)
+                or (mode == 'original' and (not hook or not cta))):
+            return self.reply(400, {'error': 'Add short opening text and a call to action for an original promo. Hook tests require opening text.'})
         spec = json.dumps({'batch': True, 'mode': mode, 'caption_style': style, 'goal': goal,
                            'count': count, 'days': days, 'source_seconds': 120, 'automatic_captions': automatic,
-                           'clip_seconds': 10, 'size': 0, 'reference': reference, 'source_url': source_url})
+                           'clip_seconds': 10, 'size': 0, 'reference': reference, 'source_url': source_url,
+                           'campaign_id': campaign_id, 'creative': creative, 'hook': hook, 'cta': cta,
+                           'sample': sample})
         try:
             job_id, created = self.server.queue.reserve(key, 'Batch: ' + name, spec,
-                total + (8 * 1024 * 1024 if source_url else 0) + 2 * count * BATCH_OUTPUT_BYTES,
+                total + (SOURCE_LIMIT if source_url or sample else 0) + 2 * count * BATCH_OUTPUT_BYTES,
                 cost=count * DEMO_RESERVATION, budget=DEMO_MONTHLY_BUDGET, quota=QUOTA)
         except Limit as error:
             return self.reply(429, {'error': str(error)})
@@ -495,6 +535,7 @@ def main():
     if server.auth:
         server.queue.bind_owner(server.owner_id)
     server.campaigns = Campaigns(server.queue)
+    server.insights = Insights(server.queue)
     server.plans = Plans(server.queue)
     server.serve_forever()
 

@@ -88,6 +88,8 @@ async function main() {
     assert.equal((await range.body()).length, 32)
     const download = await desktop.getByRole('link', {name: 'Download MP4'}).getAttribute('href')
     assert.equal(download, base + stream + '?download=1')
+    await desktop.getByRole('button', {name: 'Approve clip'}).click()
+    await desktop.getByText('Review · approved').waitFor()
     await desktop.screenshot({path: join(evidence, 'owner-desktop.png'), fullPage: true})
 
     const mobile = await browser.newPage({viewport: {width: 390, height: 844}, isMobile: true, hasTouch: true})
@@ -96,7 +98,13 @@ async function main() {
     assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
     await mobile.screenshot({path: join(evidence, 'owner-mobile.png'), fullPage: true})
 
-    await desktop.getByRole('navigation').getByRole('link', {name: 'Campaigns'}).click()
+    await desktop.getByRole('navigation').getByRole('link', {name: 'AI Agent'}).click()
+    const agent = desktop.locator('#agent-form')
+    await agent.getByLabel('Quick start').selectOption('product')
+    await agent.getByLabel('Describe your campaign').fill('Make 3 videos over 7 days for the fixture app')
+    await agent.getByRole('button', {name: 'Prepare a draft'}).click()
+    await agent.getByText(/3 clips over 7 days/).waitFor()
+    await agent.getByRole('button', {name: 'Review this draft'}).click()
     const planner = desktop.locator('#campaign-form')
     await planner.getByLabel('Name').fill('Synthetic release')
     await planner.getByLabel('Content goal').fill('Post a short teaser using the fixture')
@@ -111,6 +119,26 @@ async function main() {
     await campaign.getByRole('button', {name: 'Resume'}).click()
     await desktop.getByRole('button', {name: 'Mark handed off'}).click()
     await desktop.locator('#publication-list').getByText(/handed off/).waitFor()
+    const reported = desktop.locator('#publication-list article')
+    await reported.getByLabel('Published post URL').fill('https://www.youtube.com/shorts/abcdefghijk')
+    await reported.getByRole('button', {name: 'Record post URL'}).click()
+    await reported.getByText('Post reported by owner').waitFor()
+    await reported.getByText('Add platform metrics').click()
+    await reported.getByLabel('Views').fill('100')
+    await reported.getByLabel('Clicks').fill('5')
+    await reported.getByRole('button', {name: 'Save platform metrics'}).click()
+    await desktop.getByRole('navigation').getByRole('link', {name: 'Revenue'}).click()
+    await desktop.getByText('100 views · 5 clicks').waitFor()
+    const ledger = desktop.locator('#ledger-form')
+    await ledger.getByLabel('Amount (€)').fill('12.50')
+    await ledger.getByLabel('Status').selectOption('pending')
+    await ledger.getByLabel('Receipt or reference').fill('Synthetic payout reference')
+    await ledger.getByRole('button', {name: 'Record transaction'}).click()
+    const receipt = desktop.locator('#ledger-entries article')
+    await receipt.getByText('Owner-reported · pending').waitFor()
+    await receipt.getByRole('button', {name: 'Confirm cash transaction'}).click()
+    await receipt.getByText('Owner-reported · confirmed').waitFor()
+    await desktop.getByRole('navigation').getByRole('link', {name: 'Campaigns'}).click()
     await desktop.locator('#campaigns').screenshot({path: join(evidence, 'owner-campaigns.png')})
 
     const body = await readFile(source)
@@ -124,7 +152,7 @@ async function main() {
     await desktop.getByText('Source or clip could not be processed. Check the video and clip range.').waitFor()
     const report = '# ClipFlow browser evidence\n\nSynthetic source only. Verified actual FFmpeg rendering, ' +
       'browser closure before worker start, job persistence across web restart, 720 × 1280 MP4 playback, ' +
-      '206 byte-range streaming, explicit download control, mobile layout, campaign approval, pause/resume, manual publishing handoff and a visible failed job.\n'
+      '206 byte-range streaming, explicit download control, mobile layout, guided planning, clip and campaign approval, pause/resume, manual publishing handoff, owner-reported analytics and cash confirmation, and a visible failed job.\n'
     await writeFile(join(evidence, 'verification.md'), report)
     console.log(report)
   } finally {

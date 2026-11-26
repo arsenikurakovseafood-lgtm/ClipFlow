@@ -9,6 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from clipflow.batch import BATCH_OUTPUT_BYTES, PALETTES, BatchError, stage_batch
+from clipflow.insights import Insights
 from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Queue, source_retention_seconds
 from clipflow.r2 import PrivateMedia
@@ -38,9 +39,11 @@ def render_job(queue, job, data, source, output, transcriber):
             cues = [Cue(cue.start - offset + start_time, cue.end - offset + start_time, cue.text)
                     for cue in timed]
     if data.get('batch_parent'):
+        overlays = [Cue(**cue) for cue in data.get('overlays', [])]
         return render(source, output, start_time, end_time, cues,
                       caption_color=PALETTES[data['caption_style']], music=music,
-                      music_start=data.get('music_start', 0), output_limit=BATCH_OUTPUT_BYTES)
+                      music_start=data.get('music_start', 0), output_limit=BATCH_OUTPUT_BYTES,
+                      overlays=overlays)
     if os.environ.get('CLIPFLOW_INTERNAL_RENDER_PREVIEW') == 'true':
         return render(source, output, start_time, end_time, cues, output_limit=BATCH_OUTPUT_BYTES)
     return render(source, output, start_time, end_time, cues)
@@ -126,6 +129,7 @@ def main():
     queue = Queue(root / 'jobs.sqlite3')
     transcriber = Transcriber.configured()
     plans = Plans(queue)
+    insights = Insights(queue)
     plan_key = os.environ.get('OPENAI_API_KEY', '')
     media = PrivateMedia.configured()
     owner_id = os.environ.get('CLIPFLOW_OWNER_ID')
@@ -139,6 +143,7 @@ def main():
         if now >= next_sweep:
             sweep(root, queue, media, owner_id, now=now, source_seconds=source_seconds,
                   output_seconds=output_seconds)
+            insights.expire_platform_metrics(now)
             next_sweep = now + 300
         job = queue.claim()
         if job:

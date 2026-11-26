@@ -17,15 +17,23 @@ def service_settings():
     env['CLIPFLOW_INTERNAL_RENDER_PREVIEW'] = 'true'
     path = PERSISTENT_DATA if os.path.ismount(PERSISTENT_DATA) and os.access(PERSISTENT_DATA, os.W_OK) else DATA
     owner_env, worker_env = dict(env), dict(env)
+    if os.environ.get('CLIPFLOW_YOUTUBE_DATA_API_KEY'):
+        owner_env['CLIPFLOW_YOUTUBE_DATA_API_KEY'] = os.environ['CLIPFLOW_YOUTUBE_DATA_API_KEY']
+    for name in ('CLIPFLOW_SOURCE_RETENTION_HOURS', 'CLIPFLOW_OUTPUT_RETENTION_HOURS'):
+        value = os.environ.get(name, '')
+        if value.isascii() and value.isdecimal() and 0 < int(value) <= 2160:
+            owner_env[name] = worker_env[name] = value
     if os.environ.get('CLIPFLOW_PAID_WORKLOADS_ENABLED') == 'true':
         key = os.environ.get('OPENAI_API_KEY', '').strip()
-        budget = os.environ.get('CLIPFLOW_TRANSCRIPTION_MONTHLY_MICRO_USD', '')
-        if path == PERSISTENT_DATA and key and budget.isascii() and budget.isdecimal() and 0 < int(budget):
-            owner_env.update(CLIPFLOW_PAID_WORKLOADS_ENABLED='true',
-                             CLIPFLOW_TRANSCRIPTION_MONTHLY_MICRO_USD=budget)
-            worker_env.update(owner_env, OPENAI_API_KEY=key)
+        budgets = {name: os.environ.get(name, '') for name in ('CLIPFLOW_TRANSCRIPTION_MONTHLY_MICRO_USD',
+                                                                'CLIPFLOW_PLANNING_MONTHLY_MICRO_USD')}
+        approved = {name: value for name, value in budgets.items()
+                    if value.isascii() and value.isdecimal() and 0 < int(value)}
+        if path == PERSISTENT_DATA and key and approved:
+            owner_env.update(approved, CLIPFLOW_PAID_WORKLOADS_ENABLED='true')
+            worker_env.update(approved, CLIPFLOW_PAID_WORKLOADS_ENABLED='true', OPENAI_API_KEY=key)
         else:
-            print('Automatic captions paused. Configure a mounted /var/data disk, an API key, and a positive USD budget.',
+            print('Paid workloads paused. Configure a mounted /var/data disk, an API key, and a positive USD budget.',
                   file=sys.stderr)
     return path, owner_env, worker_env
 

@@ -1,0 +1,38 @@
+name: Deploy private ClipFlow to VPS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clipflow-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    environment: clipflow-production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy the reviewed revision
+        env:
+          ENABLED: ${{ vars.CLIPFLOW_DEPLOY_ENABLED }}
+          TARGET: ${{ vars.CLIPFLOW_SSH_TARGET }}
+          PRIVATE_KEY: ${{ secrets.CLIPFLOW_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.CLIPFLOW_SSH_KNOWN_HOSTS }}
+        run: |
+          set -eu
+          [[ "$ENABLED" == true && "$TARGET" =~ ^[a-z_][a-z0-9_-]*@[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]
+          [[ -n "$PRIVATE_KEY" && -n "$KNOWN_HOSTS" && "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          ssh_dir=$(mktemp -d)
+          trap 'rm -rf -- "$ssh_dir"' EXIT
+          umask 077
+          printf '%s\n' "$PRIVATE_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          ssh -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
+            -- "$TARGET" bash -s -- "$GITHUB_SHA" < deploy/update-vps.sh

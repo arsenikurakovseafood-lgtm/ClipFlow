@@ -12,6 +12,7 @@ from clipflow.auth import NoRedirect
 from clipflow.youtube import ImportFailed, fetch_youtube, youtube_url
 
 from clipflow.render import Cue, LOCAL_PROTOCOLS, probe
+from clipflow.sample import stage_sample
 
 MAX_BATCH = 10
 MAX_TRANSCRIPT = 128 * 1024
@@ -171,6 +172,8 @@ def fetch_source(url, destination, opener=None):
 def stage_batch(root, queue, job, data, transcriber=None):
     folder = root / job['id']
     source = folder / 'source'
+    if data.get('sample'):
+        stage_sample(folder, data['mode'])
     if data.get('source_url') and not source.exists():
         if youtube_url(data['source_url']):
             try:
@@ -213,7 +216,15 @@ def stage_batch(root, queue, job, data, transcriber=None):
         # Children read the single staged source until their own render is complete.
         first_cue = next((cue.text for cue in cues if start <= cue.start < end), '')
         title = f'{number}. {first_cue[:75] or data["goal"][:75]}'
+        overlays = []
+        overlay_seconds = min(2.5, (end - start) / 2)
+        if data.get('hook'):
+            overlays.append(asdict(Cue(start, start + overlay_seconds, data['hook'])))
+        if data.get('cta'):
+            overlays.append(asdict(Cue(end - overlay_seconds, end, data['cta'])))
         clip = {'batch_parent': job['id'], 'start': start, 'end': end,
+                'campaign_id': data.get('campaign_id'), 'creative': data.get('creative', 'standard'),
+                'overlays': overlays,
                 'caption_style': data['caption_style'],
                 'release_day': 1 + ((number - 1) * data['days'] // len(windows)),
                 'release_days': data['days'],

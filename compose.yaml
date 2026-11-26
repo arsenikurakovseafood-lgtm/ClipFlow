@@ -14,6 +14,8 @@ services:
     <<: *app
     command: [python, -m, clipflow.web, /var/lib/clipflow, --bind, 0.0.0.0, --authenticated-gateway]
     networks: [studio]
+    environment:
+      CLIPFLOW_SOURCE_RETENTION_HOURS: "${CLIPFLOW_SOURCE_RETENTION_HOURS:-24}"
     mem_limit: 256m
     healthcheck:
       test: [CMD, python, -c, "from urllib.request import urlopen; urlopen('http://127.0.0.1:3000/healthz', timeout=2).close()"]

@@ -9,6 +9,7 @@
 <script defer src="/app.js"></script>
 <script defer src="/campaigns.js"></script>
 <script defer src="/batch.js"></script>
+<script defer src="/insights.js"></script>
 </head>
 <body>
 <div class="workspace-shell">
@@ -16,22 +17,27 @@
 <a class="brand" href="#overview">Clip<span>Flow</span></a>
 <nav aria-label="Workspace">
 <a href="#overview">Overview</a>
+<a href="#agent">AI Agent</a>
 <a href="#studio">Studio</a>
 <a href="#content">Content</a>
 <a href="#campaigns">Campaigns</a>
 <a href="#accounts">Accounts</a>
+<a href="#revenue">Revenue</a>
 </nav>
-<div class="sidebar-footer"><span class="mode">Owner preview</span><button id="sign-out" hidden>Sign out</button></div>
+<div class="sidebar-footer"><span class="mode">Owner preview</span><a href="#settings">Settings</a><button id="sign-out" hidden>Sign out</button></div>
 </aside>
 <main class="workspace-main">
 <section id="overview" class="hero" data-screen>
 <p class="eyebrow">OWNER WORKSPACE</p>
-<h1>Make the cut.</h1>
-<p>Create a series of vertical clips, review the results and plan when to publish.</p>
-<a class="workspace-cta" href="#studio">Create clips</a>
+<h1>Your content.<br>On autopilot.</h1>
+<p>Turn a campaign goal into short videos, review the edits and track what drives results.</p>
+<a class="workspace-cta" href="#agent">Plan a campaign</a>
 <div class="stats"><div><strong id="ready">—</strong><span>Ready to preview</span></div>
 <div><strong id="active">—</strong><span>In progress</span></div>
-<div><strong id="failed">—</strong><span>Failed</span></div></div>
+<div><strong id="failed">—</strong><span>Failed</span></div>
+<div><strong id="overview-due">—</strong><span>Due to publish</span></div>
+<div><strong id="overview-cash">—</strong><span>Confirmed cash result</span></div></div>
+<h2 class="section-title">What to test next</h2><div id="overview-decisions"></div>
 </section>
 <section id="trim" data-screen hidden>
 <p class="eyebrow">STUDIO</p>
@@ -70,12 +76,14 @@
 <p>Pick a video and choose what you want ClipFlow to make. You can review every result before publishing.</p>
 <p id="batch-unavailable" hidden>Series editing is unavailable with the current storage settings. <a href="#trim">Open manual trim</a>.</p>
 <form id="batch-form" hidden>
-<label>What are you making?<select name="mode"><option value="visual">Quick clips · use the video as it is</option><option value="speech">Podcast highlights · choose by what is said</option><option value="music">Music promos · use your song as the audio</option></select></label>
+<label>What are you making?<select name="mode"><option value="visual">Quick clips · use the video as it is</option><option value="speech">Podcast highlights · choose by what is said</option><option value="music">Music promos · use your song as the audio</option><option value="original">Original promo · add an opening hook and a call to action</option></select></label>
+<label>Campaign<select name="campaign"><option value="">Standalone clips</option></select></label>
 <label>What should the clips achieve?<textarea name="goal" maxlength="500" placeholder="Find motivational moments about persistence for people building their first app" required></textarea></label>
 <label>Campaign reference (optional)<input name="reference" type="url" maxlength="400" placeholder="https://…"><small>Optional track or campaign reference. Choose your actual video source below.</small></label>
-<label>Where is your video?<select name="sourceKind"><option value="file">Upload a video file</option><option value="link">Import from YouTube or Cloudflare R2</option></select></label>
+<label>Where is your video?<select name="sourceKind"><option value="file">Upload a video file</option><option value="link">Import from YouTube or Cloudflare R2</option><option value="sample">Use the ClipFlow walkthrough sample</option></select></label>
 <label id="batch-source-url" hidden>Video file link<input name="sourceUrl" type="url" maxlength="2400"><small id="youtube-source-help">Use a public YouTube video or Shorts link, or an HTTPS link to an R2 video file. Use videos you have permission to edit.</small></label>
 <label id="batch-source-file">Upload video<input name="source" type="file" accept=".mp4,.mov,.webm" required><small>Authorized MP4, MOV or WebM · up to 8 MiB and 2 minutes</small></label>
+<p id="batch-sample-note" hidden>The sample uses ClipFlow’s own footage with a prepared transcript or sample track. Choose up to four clips to test without uploading files.</p>
 <label id="batch-track" hidden>Track audio file<input name="music" type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac"><small>Upload your authorized track file. It replaces audio from the footage.</small></label>
 <label class="check-option"><input type="checkbox" name="automaticCaptions" disabled>Generate subtitles from audio</label>
 <p id="caption-availability" role="status"></p>
@@ -85,6 +93,12 @@
 <label>Release window (days)<input name="days" type="number" min="1" max="30" value="3" required></label>
 <label>Caption color<select name="style"><option value="white">White</option><option value="pink">Hot pink</option><option value="red">Red</option><option value="blue">Sky blue</option></select></label>
 </div>
+<details id="creative-options"><summary>Opening hook and call to action</summary>
+<div class="creative-fields">
+<label>Hook format<select name="creative"><option value="standard">Standard</option><option value="question">Question</option><option value="statement">Statement</option><option value="result">Result</option></select></label>
+<label>Opening text<input name="hook" maxlength="100" placeholder="What catches attention in the first two seconds?"></label>
+<label>Call to action<input name="cta" maxlength="100" placeholder="What should viewers do next?"></label>
+</div></details>
 <small>Clips can be up to 10 seconds. When they are ready, open Content to play them.</small>
 <button type="submit">Create clips</button>
 <a href="#content">Open Content</a>
@@ -92,20 +106,28 @@
 </form>
 <p><a href="#trim">Trim a single clip manually</a></p>
 </section>
-<div class="workspace campaign-workspace" id="campaigns" data-screen hidden>
-<section id="agent">
+<section id="agent" data-screen hidden>
 <p class="eyebrow">CAMPAIGN PLANNER</p>
-<h2>Plan a campaign</h2>
-<form id="agent-form" hidden>
+<h1>Plan a campaign</h1>
+<p id="agent-capability">Guided planning is available while AI planning is paused.</p>
+<form id="agent-form">
+  <label>Quick start<select name="preset"><option value="speech">AI Clipping</option><option value="music">Music Promotion</option><option value="original">Faceless Content</option><option value="product">Product Promotion</option><option value="affiliate">Affiliate Campaign</option></select></label>
   <label>Describe your campaign<textarea name="goal" maxlength="1500" required></textarea></label>
-  <button type="submit">Ask AI for a draft</button>
+  <button type="submit" name="guided">Prepare a draft</button>
+  <button type="submit" name="ai" hidden>Ask AI for a draft</button>
   <p id="agent-status" role="status"></p>
   <div id="agent-plan"></div>
 </form>
+</section>
+<div class="workspace campaign-workspace" id="campaigns" data-screen hidden>
+<section>
+<h2>Review campaign plan</h2>
 <form id="campaign-form">
 <label>Name<input name="name" maxlength="80" required></label>
 <label>Content goal<textarea name="goal" maxlength="1500" required placeholder="Reach new listeners with weekly highlights from my approved footage"></textarea></label>
 <label>Publishing destination<select name="channel"><option value="youtube">YouTube Shorts</option><option value="instagram">Instagram Reels</option><option value="tiktok">TikTok</option></select></label>
+<label>Content workflow<select name="workflow"><option value="visual">Quick clips</option><option value="speech">Podcast highlights</option><option value="music">Music promos</option><option value="original">Original promo</option></select></label>
+<label>Target clips<input name="target_clips" type="number" min="1" max="10" value="3" required></label>
 <div class="campaign-fields">
 <label>Duration (days)<input name="duration_days" type="number" min="1" max="90" value="14" required></label>
 <label>Days between posts<input name="cadence_days" type="number" min="1" max="90" value="7" required></label>
@@ -124,6 +146,22 @@
 <div id="publication-list"></div>
 </section>
 </div>
+<section id="revenue" data-screen hidden>
+<h1>Revenue &amp; performance</h1>
+<p>Record real cash receipts, expenses and platform measurements for your campaigns.</p>
+<div id="revenue-totals" class="stats"></div>
+<p id="insights-status" role="status"></p>
+<h2 class="section-title">Record a transaction</h2>
+<form id="ledger-form">
+<label>Category<select name="kind"><optgroup label="Income"><option value="paid_campaign">Paid campaign</option><option value="affiliate">Affiliate commission</option><option value="platform">Platform payout</option><option value="subscription">Subscription receipt</option></optgroup><optgroup label="Expenses"><option value="api">API</option><option value="render">Rendering</option><option value="storage">Storage</option><option value="publishing">Publishing</option><option value="fees">Fees</option><option value="tax">Tax</option></optgroup></select></label>
+<div class="range"><label>Amount (€)<input name="amount" type="number" min="0.01" max="1000000" step="0.01" required></label><label>Status<select name="state"><option value="confirmed">Confirmed cash</option><option value="pending">Pending</option><option value="estimated">Estimated</option></select></label></div>
+<label>Campaign<select name="campaign"><option value="">Workspace-wide</option></select></label>
+<label>Receipt or reference<input name="note" maxlength="240" required></label>
+<button type="submit">Record transaction</button>
+</form>
+<h2 class="section-title">Transactions</h2><div id="ledger-entries"></div>
+<h2 class="section-title">Owner-reported platform metrics</h2><div id="performance-list"></div>
+</section>
 <section id="accounts" data-screen hidden>
 <p class="eyebrow">ACCOUNTS</p>
 <h1>Publishing accounts</h1>
@@ -131,8 +169,17 @@
 <div class="account-list">
 <article><h2>Instagram</h2><p>Manual publishing · connection unavailable</p><a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer">Open Instagram</a></article>
 <article><h2>TikTok</h2><p>Manual publishing · connection unavailable</p><a href="https://www.tiktok.com/upload" target="_blank" rel="noopener noreferrer">Open TikTok Upload</a></article>
-<article><h2>YouTube</h2><p>Manual publishing · connection unavailable</p><a href="https://studio.youtube.com/" target="_blank" rel="noopener noreferrer">Open YouTube Studio</a></article>
+<article><h2>YouTube</h2><p>Manual publishing · OAuth connection unavailable</p><p id="youtube-analytics-status">Public statistics require a configured YouTube Data API key.</p><a href="https://studio.youtube.com/" target="_blank" rel="noopener noreferrer">Open YouTube Studio</a></article>
 </div>
+</section>
+<section id="settings" data-screen hidden>
+<h1>Workspace settings</h1>
+<h2 class="section-title">Processing</h2>
+<p>Pause new background processing across all campaigns. A task already running may finish.</p>
+<p id="settings-status" role="status"></p>
+<div id="settings-controls" class="campaign-actions"></div>
+<h2 class="section-title">Usage</h2><div id="workspace-usage" class="stats"></div>
+<h2 class="section-title">Recent decisions</h2><div id="workspace-audit"></div>
 </section>
 <footer>Owner Studio · Review clips before publishing</footer>
 </main>

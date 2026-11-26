@@ -62,7 +62,8 @@ def subtitles(cues, start, end):
 
 
 def render(source: Path, output: Path, start: float, end: float, cues: list[Cue], *,
-           caption_color='00FFFFFF', music=None, music_start=0, output_limit=MAX_OUTPUT_BYTES):
+           caption_color='00FFFFFF', music=None, music_start=0, output_limit=MAX_OUTPUT_BYTES,
+           overlays=()):
     """Write a verified MP4 atomically. Cues use absolute source timestamps."""
     source, output = source.resolve(), output.resolve()
     if len(caption_color) != 8 or any(c not in '0123456789ABCDEF' for c in caption_color):
@@ -100,6 +101,11 @@ def render(source: Path, output: Path, start: float, end: float, cues: list[Cue]
             (Path(work) / 'clip.srt').write_text(caption_body, encoding='utf-8')
             filters += (",subtitles=clip.srt:force_style='FontName=DejaVu Sans,FontSize=17,"
                         f"Outline=2,MarginV=32,PrimaryColour=&H{caption_color}'")
+        overlay_body = subtitles(overlays, start, end)
+        if overlay_body:
+            (Path(work) / 'overlay.srt').write_text(overlay_body, encoding='utf-8')
+            filters += (",subtitles=overlay.srt:force_style='FontName=DejaVu Sans,FontSize=20,"
+                        "Bold=1,Alignment=8,BorderStyle=3,Outline=2,MarginV=42,PrimaryColour=&H00FFFFFF'")
         run(
             'ffmpeg', '-nostdin', '-v', 'error', '-filter_threads', '2',
             *LOCAL_PROTOCOLS, '-threads', '2', '-ss', str(start), '-i', str(source),

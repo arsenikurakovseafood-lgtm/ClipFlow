@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from clipflow.auth import NoRedirect
 from clipflow.campaigns import CHANNELS
-from clipflow.queue import Limit
+from clipflow.queue import Limit, workloads_paused
 
 MODEL = 'gpt-6-luna'
 RESERVATION_MICRO_USD = 2000
@@ -42,6 +42,8 @@ class Plans:
             raise ValueError('Describe a content goal in up to 1,500 characters')
         month = datetime.now(timezone.utc).strftime('%Y-%m')
         with self.queue.transaction() as db:
+            if workloads_paused(db):
+                raise Limit('Workspace processing is paused')
             used = db.execute('SELECT COALESCE(SUM(reserved),0) FROM plan_jobs WHERE month=?',
                               (month,)).fetchone()[0]
             if used + RESERVATION_MICRO_USD > budget:
@@ -60,6 +62,8 @@ class Plans:
         now = time.time()
         month = datetime.now(timezone.utc).strftime('%Y-%m')
         with self.queue.transaction() as db:
+            if workloads_paused(db):
+                return False
             db.execute("""UPDATE plan_jobs SET state='failed',error='Previous provider attempt could not be confirmed.'
                 WHERE state='running' AND started<=?""", (now - 120,))
             db.execute("""UPDATE plan_jobs SET state='failed',error='Planning reservation expired.'

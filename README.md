@@ -1,6 +1,12 @@
 # ClipFlow
 
-ClipFlow is an AI Content Autopilot under development. This milestone implements the CPU clip renderer.
+ClipFlow is an AI Content Autopilot under development. The private owner workspace connects guided campaign planning, batch rendering, clip review, manual publishing and performance tracking.
+
+## Test the owner workspace in a browser
+
+Open the [ClipFlow owner preview](https://clipflow-h09b.onrender.com/signin) with the existing owner password. In **AI Agent**, prepare and review a draft. Approve the campaign and select **Create clips for this campaign**. Pick **Use the ClipFlow walkthrough sample** to test with built-in footage and prepared subtitles or a sample track. The render worker produces real vertical MP4s. Review and approve the clips in **Content**, then schedule them in **Campaigns**. After publishing externally, record the post URL and checkpoints. **Revenue** separates confirmed cash, pending and estimated amounts. **Settings** controls the global processing pause.
+
+The published preview has temporary storage and a manual publishing queue. Live OpenAI, durable deployments, social publishing and public billing require the prerequisites documented in [build status](BUILD_STATUS.md).
 
 Run the media checks from a Codex Cloud checkout or from GitHub Actions. The cloud image must provide Python 3, FFmpeg, FFprobe, libx264, libass, and DejaVu Sans.
 
@@ -52,6 +58,8 @@ This deployment package uses the demo's SQLite and private on-server storage.
 Use authorized media and keep the hostname private to the owner. Before real
 customer traffic, configure production authentication and media storage, and
 complete retention, cleanup, and usage enforcement.
+
+The `Deploy private ClipFlow to VPS` GitHub Actions workflow is a manual deployment path for reviewed `main` commits. In the `clipflow-production` GitHub environment, configure required reviewers where supported, `CLIPFLOW_DEPLOY_ENABLED=true`, `CLIPFLOW_SSH_TARGET`, `CLIPFLOW_SSH_KEY` and a pinned `CLIPFLOW_SSH_KNOWN_HOSTS` entry. The authorized cloud host needs Docker Compose, the repository at `/srv/clipflow/repo`, and `/srv/clipflow/owner.env` outside Git. An optional `/srv/clipflow/enable-owner-integrations` marker selects the Supabase Auth/R2 variant. The deployer preserves the Compose project and its data volume. This workflow requires an approved VPS and has not deployed one.
 
 ## Enable owner sign-in and direct private media on a configured cloud server
 
@@ -143,6 +151,8 @@ compatible MP4 stream, with a limit of two minutes and 8 MiB. The preview
 does not ingest playlists, live streams, Spotify audio or streaming movie
 pages. Source access can fail on cloud hosts. Upload the source directly
 when an import is unavailable.
+
+**Original promo** uses approved footage with an independent opening hook and closing call-to-action overlay. Hooks are categorized for comparisons. Campaign analytics only compare owner-entered snapshots with the same time window and sufficient clips and recorded views. When the server has a restricted `CLIPFLOW_YOUTUBE_DATA_API_KEY`, a recorded public YouTube post can also show on-demand official view, like and comment counts. These observations are timestamped, short-lived and displayed independently from historical owner-entered checkpoints. [YouTube `videos.list`](https://developers.google.com/youtube/v3/docs/videos/list)
 
 ### Automatic subtitles on Render
 

@@ -12,7 +12,9 @@ from clipflow.batch import R2_IMPORT_FAILED
 from clipflow.youtube import ACCESS_REFUSED
 
 REPLACEABLE_BATCH = """state='failed' AND source_removed=0 AND finished_at>?
-    AND json_extract(spec,'$.batch')=1 AND error IN (?,?)"""
+    AND json_extract(spec,'$.batch')=1 AND error IN (?,?)
+    AND (json_extract(spec,'$.campaign_id') IS NULL OR EXISTS
+        (SELECT 1 FROM campaigns c WHERE c.id=json_extract(jobs.spec,'$.campaign_id') AND c.state<>'stopped'))"""
 
 
 def source_retention_seconds():
@@ -21,6 +23,15 @@ def source_retention_seconds():
 
 def replacement_window():
     return time.time() - source_retention_seconds(), ACCESS_REFUSED, R2_IMPORT_FAILED
+
+
+def workloads_paused(db):
+    return bool(db.execute('SELECT paused FROM workspace_control WHERE singleton=1').fetchone()[0])
+
+
+def audit(db, event, subject):
+    db.execute('INSERT INTO workspace_audit (event,subject,created_at) VALUES (?,?,?)',
+               (event, subject, datetime.now(timezone.utc).isoformat()))
 
 
 class Limit(Exception):
@@ -47,10 +58,34 @@ class Queue:
                 db.execute("UPDATE jobs SET finished_at=? WHERE state IN ('ready','failed')", (time.time(),))
             if 'source_removed' not in columns:
                 db.execute('ALTER TABLE jobs ADD COLUMN source_removed INTEGER NOT NULL DEFAULT 0')
+            if 'review' not in columns:
+                db.execute("ALTER TABLE jobs ADD COLUMN review TEXT NOT NULL DEFAULT 'pending'")
             db.execute("""CREATE TABLE IF NOT EXISTS transcription_usage (
                 job_id TEXT PRIMARY KEY, month TEXT NOT NULL, micro_usd INTEGER NOT NULL,
                 captions TEXT
             )""")
+            db.execute("""CREATE TABLE IF NOT EXISTS campaigns (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL, goal TEXT NOT NULL,
+                channel TEXT NOT NULL, duration_days INTEGER NOT NULL,
+                cadence_days INTEGER NOT NULL, budget_cents INTEGER NOT NULL,
+                state TEXT NOT NULL, created_at TEXT NOT NULL
+            )""")
+            db.execute("""CREATE TABLE IF NOT EXISTS workspace_control (
+                singleton INTEGER PRIMARY KEY CHECK(singleton=1), paused INTEGER NOT NULL
+            )""")
+            db.execute('INSERT OR IGNORE INTO workspace_control VALUES (1,0)')
+            db.execute("""CREATE TABLE IF NOT EXISTS workspace_audit (
+                event TEXT NOT NULL, subject TEXT NOT NULL, created_at TEXT NOT NULL
+            )""")
+
+    def control(self, pause=None):
+        with self.transaction() as db:
+            current = workloads_paused(db)
+            if pause is not None and pause != current:
+                db.execute('UPDATE workspace_control SET paused=? WHERE singleton=1', (pause,))
+                audit(db, 'workloads_paused' if pause else 'workloads_resumed', 'workspace')
+            events = [dict(row) for row in db.execute('SELECT * FROM workspace_audit ORDER BY rowid DESC LIMIT 20')]
+            return {'paused': current if pause is None else pause, 'events': events}
 
     def bind_owner(self, owner_id):
         with self.transaction() as db:
@@ -71,6 +106,8 @@ class Queue:
     def reserve_transcription(self, job, cost, budget):
         month = datetime.now(timezone.utc).strftime('%Y-%m')
         with self.transaction() as db:
+            if workloads_paused(db):
+                return False
             current = db.execute("SELECT 1 FROM jobs WHERE id=? AND lease_token=? AND state='running'",
                                  (job['id'], job['lease_token'])).fetchone()
             attempted = db.execute('SELECT 1 FROM transcription_usage WHERE job_id=?',
@@ -106,6 +143,10 @@ class Queue:
             old = db.execute('SELECT id FROM jobs WHERE request_key=?', (key,)).fetchone()
             if old:
                 return old['id'], False
+            campaign_id = json.loads(spec).get('campaign_id')
+            if campaign_id and not db.execute("SELECT 1 FROM campaigns WHERE id=? AND state='active'",
+                                               (campaign_id,)).fetchone():
+                raise Limit('Approve or resume the campaign before rendering')
             spending = db.execute('SELECT COALESCE(SUM(reserved),0) FROM jobs WHERE month=?',
                                   (month,)).fetchone()[0]
             storage = db.execute('SELECT COALESCE(SUM(bytes),0) FROM jobs').fetchone()[0]
@@ -151,10 +192,14 @@ class Queue:
     def claim(self, now=None):
         now = time.time() if now is None else now
         with self.transaction() as db:
+            if workloads_paused(db):
+                return None
             db.execute("""UPDATE jobs SET state='failed', error='Worker lease expired twice', finished_at=?, spec=json_remove(spec,'$.source_url')
                           WHERE state='running' AND lease_until<=? AND attempts>=2""", (now, now))
             job = db.execute("""SELECT * FROM jobs
-                WHERE state='queued' OR (state='running' AND lease_until<=?)
+                WHERE (state='queued' OR (state='running' AND lease_until<=?))
+                AND (json_extract(spec,'$.campaign_id') IS NULL OR EXISTS
+                    (SELECT 1 FROM campaigns c WHERE c.id=json_extract(jobs.spec,'$.campaign_id') AND c.state='active'))
                 ORDER BY rowid LIMIT 1""", (now,)).fetchone()
             if not job:
                 return None
@@ -191,13 +236,13 @@ class Queue:
         with self.transaction() as db:
             # Retire the clip before deletion. An interrupted cleanup can be retried.
             db.execute("""UPDATE jobs SET state='expired'
-                WHERE state IN ('ready','failed','prepared') AND finished_at<=?
+                WHERE state IN ('ready','failed','prepared','cancelled') AND finished_at<=?
                   AND NOT EXISTS (SELECT 1 FROM jobs AS child
                     WHERE json_extract(child.spec,'$.batch_parent')=jobs.id
                     AND child.state IN ('queued','running','ready','failed'))""", (output_cutoff,))
             return [dict(row) for row in db.execute("""SELECT id, spec, lease_token, state
                 FROM jobs WHERE (state='expired' AND (bytes>0 OR source_removed=0))
-                    OR (state IN ('ready','failed','prepared') AND source_removed=0 AND finished_at<=?
+                    OR (state IN ('ready','failed','prepared','cancelled') AND source_removed=0 AND finished_at<=?
                         AND NOT EXISTS (SELECT 1 FROM jobs AS child
                         WHERE json_extract(child.spec,'$.batch_parent')=jobs.id
                         AND child.state IN ('queued','running')))
@@ -215,8 +260,9 @@ class Queue:
     def all(self):
         with self.transaction() as db:
             return [dict(row) for row in db.execute(f"""SELECT id,name,state,attempts,error,elapsed,
-                reserved,output_bytes,lease_token,
+                reserved,output_bytes,lease_token,review,
                 CASE WHEN {REPLACEABLE_BATCH} THEN 1 ELSE 0 END AS source_replaceable,
+                json_extract(spec,'$.campaign_id') AS campaign_id,
                 json_extract(spec,'$.release_day') AS release_day,
                 json_extract(spec,'$.release_days') AS release_days,
                 json_extract(spec,'$.reference') AS reference,

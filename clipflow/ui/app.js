@@ -53,6 +53,34 @@ function sourceRecovery(job) {
   return form
 }
 
+function clipReview(job) {
+  const controls = document.createElement('div')
+  controls.className = 'review-controls'
+  const status = document.createElement('small')
+  status.setAttribute('role', 'status')
+  status.textContent = 'Review · ' + job.review
+  for (const [review, label] of [['approved', 'Approve clip'], ['rejected', 'Reject clip']]) {
+    if (review === job.review) continue
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.textContent = label
+    button.addEventListener('click', async () => {
+      button.disabled = true
+      try {
+        const response = await fetch('/api/clips/' + job.id + '/review', {method: 'POST',
+          headers: {'Content-Type': 'application/json'}, body: JSON.stringify({review})})
+        if (!response.ok) throw new Error((await response.json()).error)
+        await refresh()
+        await refreshCampaigns()
+      } catch (error) { status.textContent = error.message }
+      finally { button.disabled = false }
+    })
+    controls.append(button)
+  }
+  controls.append(status)
+  return controls
+}
+
 async function refresh() {
   try {
     const response = await fetch('/api/jobs')
@@ -67,6 +95,8 @@ async function refresh() {
     byId('active').textContent = jobs.filter(job => ['uploading', 'queued', 'running'].includes(job.state)).length
     byId('jobs').replaceChildren(...jobs.map(job => {
       const row = document.createElement('li')
+      row.dataset.jobId = job.id
+      if (job.batch_parent) row.dataset.batchId = job.batch_parent
       const name = document.createElement('strong')
       name.textContent = job.name
       row.append(name)
@@ -82,6 +112,7 @@ async function refresh() {
       detail.textContent = job.state === 'ready' ? 'Ready · ' + job.elapsed.toFixed(2) + ' s render'
         : (job.error || job.state[0].toUpperCase() + job.state.slice(1))
       row.append(detail)
+      if (job.state === 'ready') row.append(clipReview(job))
       if (job.source_replaceable) row.append(sourceRecovery(job))
       if (job.release_day) {
         const release = document.createElement('small')
