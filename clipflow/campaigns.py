@@ -1,7 +1,7 @@
 """Single-owner campaign drafts and manual publication queue."""
 import math
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 CHANNELS = {'youtube', 'instagram', 'tiktok'}
 TRANSITIONS = {
@@ -89,6 +89,34 @@ class Campaigns:
                 raise Conflict('This clip is already in the campaign queue')
             db.execute('INSERT INTO manual_posts (id,campaign_id,job_id,scheduled_at) VALUES (?,?,?,?)',
                        (uuid.uuid4().hex, campaign_id, job_id, scheduled))
+
+    def schedule_batch(self, campaign_id, data):
+        batch_id = data.get('batch_id')
+        first = data.get('scheduled_at')
+        if not isinstance(batch_id, str) or not isinstance(first, str):
+            raise ValueError('Choose a finished batch and its first release date')
+        origin = datetime.fromisoformat(first)
+        if origin.tzinfo is None:
+            raise ValueError('The scheduled time requires a timezone')
+        with self.queue.transaction() as db:
+            campaign = db.execute('SELECT state FROM campaigns WHERE id=?', (campaign_id,)).fetchone()
+            batch = db.execute("SELECT id FROM jobs WHERE id=? AND state='prepared'", (batch_id,)).fetchone()
+            clips = db.execute("""SELECT id, state, json_extract(spec,'$.release_day') AS day
+                FROM jobs WHERE json_extract(spec,'$.batch_parent')=? ORDER BY rowid""", (batch_id,)).fetchall()
+            if not campaign or campaign['state'] != 'active':
+                raise Conflict('Approve the campaign before scheduling')
+            if not batch or not clips or any(clip['state'] != 'ready' for clip in clips):
+                raise Conflict('Wait until all clips in this batch are ready')
+            rows = []
+            slots = {}
+            for clip in clips:
+                day = clip['day']
+                slot = slots.get(day, 0)
+                slots[day] = slot + 1
+                scheduled = (origin + timedelta(days=day - 1, minutes=15 * slot)).astimezone(timezone.utc)
+                rows.append((uuid.uuid4().hex, campaign_id, clip['id'], scheduled.isoformat()))
+            db.executemany("""INSERT INTO manual_posts (id,campaign_id,job_id,scheduled_at)
+                VALUES (?,?,?,?) ON CONFLICT(campaign_id,job_id) DO NOTHING""", rows)
 
     def complete(self, post_id):
         with self.queue.transaction() as db:

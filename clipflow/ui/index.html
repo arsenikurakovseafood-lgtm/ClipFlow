@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/app.css">
 <script defer src="/app.js"></script>
 <script defer src="/campaigns.js"></script>
+<script defer src="/batch.js"></script>
 </head>
 <body>
 <header><div class="bar"><a class="brand" href="/">Clip<span>Flow</span></a>
@@ -16,7 +17,7 @@
 <section id="overview" class="hero">
 <p class="eyebrow">OWNER WORKSPACE</p>
 <h1>Make the cut.</h1>
-<p>Turn an authorized source video into a vertical clip. Your render runs on the cloud worker.</p>
+<p>Create vertical clips individually or from a batch brief. Your renders run on the cloud worker.</p>
 <div class="stats"><div><strong id="ready">—</strong><span>Ready to preview</span></div>
 <div><strong id="active">—</strong><span>In progress</span></div>
 <div><strong id="failed">—</strong><span>Failed</span></div></div>
@@ -52,6 +53,26 @@
 <ul id="jobs"></ul>
 </section>
 </div>
+<section id="batch-studio" class="provider-section" hidden>
+<p class="eyebrow">BATCH STUDIO</p>
+<h2>Turn one source into a series</h2>
+<form id="batch-form">
+<label>Editing mode<select name="mode"><option value="speech">Spoken highlights</option><option value="music">Music promos</option></select></label>
+<label>What should the clips achieve?<textarea name="goal" maxlength="500" placeholder="Find motivational moments about persistence for people building their first app" required></textarea></label>
+<label>YouTube or Spotify reference (optional)<input name="reference" type="url" maxlength="400" placeholder="https://…"><small>Saved as a reference. Upload the authorized source files below.</small></label>
+<label>Batch source video<input name="source" type="file" accept=".mp4,.mov,.webm" required><small>Authorized MP4, MOV or WebM · up to 8 MiB and 2 minutes</small></label>
+<label id="batch-track" hidden>Track audio file<input name="music" type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac"><small>Upload your authorized track file. It replaces audio from the footage.</small></label>
+<label>Timed subtitles <input name="captions" type="file" accept=".srt,.vtt"><small id="batch-caption-help">Required for spoken highlights in this preview. Use SRT or WebVTT.</small></label>
+<div class="campaign-fields">
+<label>Number of clips<input name="count" type="number" min="1" max="10" value="3" required></label>
+<label>Release window (days)<input name="days" type="number" min="1" max="30" value="3" required></label>
+<label>Caption color<select name="style"><option value="white">White</option><option value="pink">Hot pink</option><option value="red">Red</option><option value="blue">Sky blue</option></select></label>
+</div>
+<small>Up to 10 seconds per clip. Suggested release days appear in the library. Publishing is manual.</small>
+<button type="submit">Create batch</button>
+<p id="batch-status" role="status"></p>
+</form>
+</section>
 <div class="workspace campaign-workspace" id="campaigns">
 <section id="agent">
 <p class="eyebrow">CAMPAIGN PLANNER</p>

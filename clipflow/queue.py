@@ -127,7 +127,7 @@ class Queue:
                 return None
             token = uuid.uuid4().hex
             spec = json.loads(job['spec'])
-            lease_seconds = 600 if spec.get('automatic_captions') or spec.get('storage') == 'r2' else 360
+            lease_seconds = 600 if spec.get('automatic_captions') or spec.get('storage') == 'r2' or spec.get('batch') else 360
             db.execute("""UPDATE jobs SET state='running', attempts=attempts+1,
                           lease_until=?, lease_token=? WHERE id=?""", (now + lease_seconds, token, job['id']))
             return dict(job, lease_token=token)
@@ -139,14 +139,34 @@ class Queue:
                 ('failed' if error else 'ready', error, elapsed, output_bytes, time.time(),
                  job['id'], job['lease_token'])).rowcount)
 
+    def expand_batch(self, job, children, max_bytes, detail):
+        with self.transaction() as db:
+            changed = db.execute("""UPDATE jobs SET state='prepared',error=?,finished_at=?,
+                bytes=bytes-? WHERE id=? AND lease_token=? AND state='running'""",
+                (detail, time.time(), 2 * max_bytes * (json.loads(job['spec'])['count'] - len(children)),
+                 job['id'], job['lease_token'])).rowcount
+            if not changed:
+                return False
+            db.executemany("""INSERT INTO jobs (id,request_key,name,spec,state,month,reserved,bytes)
+                VALUES (?,?,?,?,'queued',?,0,0)""",
+                [(clip_id, clip_id, name, json.dumps(spec), job['month'])
+                 for clip_id, name, spec in children])
+            return True
+
     def expiring(self, source_cutoff, output_cutoff):
         with self.transaction() as db:
             # Retire the clip before deletion. An interrupted cleanup can be retried.
             db.execute("""UPDATE jobs SET state='expired'
-                WHERE state IN ('ready','failed') AND finished_at<=?""", (output_cutoff,))
+                WHERE state IN ('ready','failed','prepared') AND finished_at<=?
+                  AND NOT EXISTS (SELECT 1 FROM jobs AS child
+                    WHERE json_extract(child.spec,'$.batch_parent')=jobs.id
+                    AND child.state IN ('queued','running','ready','failed'))""", (output_cutoff,))
             return [dict(row) for row in db.execute("""SELECT id, spec, lease_token, state
-                FROM jobs WHERE (state='expired' AND bytes>0)
-                    OR (state IN ('ready','failed') AND source_removed=0 AND finished_at<=?)
+                FROM jobs WHERE (state='expired' AND (bytes>0 OR source_removed=0))
+                    OR (state IN ('ready','failed','prepared') AND source_removed=0 AND finished_at<=?
+                        AND NOT EXISTS (SELECT 1 FROM jobs AS child
+                        WHERE json_extract(child.spec,'$.batch_parent')=jobs.id
+                        AND child.state IN ('queued','running')))
                 ORDER BY finished_at LIMIT 100""", (source_cutoff,))]
 
     def reclaimed(self, job, source_bytes):
@@ -161,4 +181,8 @@ class Queue:
     def all(self):
         with self.transaction() as db:
             return [dict(row) for row in db.execute("""SELECT id,name,state,attempts,error,elapsed,
-                reserved,output_bytes,lease_token FROM jobs ORDER BY rowid DESC""")]
+                reserved,output_bytes,lease_token,
+                json_extract(spec,'$.release_day') AS release_day,
+                json_extract(spec,'$.release_days') AS release_days,
+                json_extract(spec,'$.reference') AS reference,
+                json_extract(spec,'$.batch_parent') AS batch_parent FROM jobs ORDER BY rowid DESC""")]

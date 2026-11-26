@@ -53,7 +53,7 @@ async function main() {
     const page = await browser.newPage({viewport: {width: 1400, height: 1000}})
     await page.goto(base)
     await page.getByText('Your rendered clips will appear here.').waitFor()
-    await page.getByLabel('Source video').setInputFiles(source)
+    await page.locator('#render').getByLabel('Source video').setInputFiles(source)
     await page.getByLabel('Optional caption').fill('Synthetic cloud render')
     await page.getByRole('button', {name: 'Queue render'}).click()
     await page.getByText(/Accepted/).waitFor()
@@ -70,7 +70,7 @@ async function main() {
 
     const desktop = await browser.newPage({viewport: {width: 1400, height: 1000}})
     await desktop.goto(base)
-    await desktop.getByRole('button', {name: 'Preview'}).waitFor()
+    await desktop.getByRole('button', {name: 'Preview', exact: true}).waitFor()
     await desktop.locator('video').evaluate(async video => {
       video.muted = true
       await video.play()
@@ -90,7 +90,7 @@ async function main() {
 
     const mobile = await browser.newPage({viewport: {width: 390, height: 844}, isMobile: true, hasTouch: true})
     await mobile.goto(base)
-    await mobile.getByRole('button', {name: 'Preview'}).waitFor()
+    await mobile.getByRole('button', {name: 'Preview', exact: true}).waitFor()
     assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
     await mobile.screenshot({path: join(evidence, 'owner-mobile.png'), fullPage: true})
 

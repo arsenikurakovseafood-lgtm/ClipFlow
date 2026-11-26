@@ -69,3 +69,5 @@ textarea{min-height:100px;resize:vertical}
 #agent-status{margin:0}
 
 .password-only #signin-email{display:none}
+#batch-form{max-width:780px}
+#batch-studio[hidden],#batch-track[hidden]{display:none}

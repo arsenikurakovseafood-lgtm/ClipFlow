@@ -63,7 +63,35 @@ function scheduleForm(base, ready) {
   return form
 }
 
-function campaignCard(campaign, ready) {
+function batchScheduleForm(base, batches) {
+  const form = element('form')
+  const selection = element('select')
+  selection.setAttribute('aria-label', 'Finished batch')
+  for (const batch of batches) {
+    const option = element('option', batch.name)
+    option.value = batch.id
+    selection.append(option)
+  }
+  const date = element('input')
+  date.type = 'datetime-local'
+  date.required = true
+  date.setAttribute('aria-label', 'First batch release')
+  const submit = element('button', 'Schedule entire batch')
+  form.append(selection, date, submit)
+  form.addEventListener('submit', async event => {
+    event.preventDefault()
+    submit.disabled = true
+    try {
+      const scheduled = await campaignAction(base + '/schedule-batch', {
+        batch_id: selection.value, scheduled_at: new Date(date.value).toISOString()
+      })
+      if (scheduled) form.reset()
+    } finally { submit.disabled = false }
+  })
+  return form
+}
+
+function campaignCard(campaign, ready, batches) {
   const base = '/api/campaigns/' + campaign.id
   const card = element('article')
   card.className = 'campaign-card'
@@ -80,7 +108,10 @@ function campaignCard(campaign, ready) {
     controls.append(action(next[0].toUpperCase() + next.slice(1), () => campaignAction(base + '/' + next)))
   }
   card.append(controls)
-  if (campaign.state === 'active') card.append(scheduleForm(base, ready))
+  if (campaign.state === 'active') {
+    card.append(scheduleForm(base, ready))
+    if (batches.length) card.append(batchScheduleForm(base, batches))
+  }
   return card
 }
 
@@ -103,11 +134,16 @@ async function refreshCampaigns() {
     if (responses.some(response => !response.ok)) throw new Error()
     const [data, jobs] = await Promise.all(responses.map(response => response.json()))
     const ready = jobs.filter(job => job.state === 'ready')
-    const signature = JSON.stringify([data, ready.map(job => job.id)])
+    const batches = jobs.filter(job => {
+      if (job.state !== 'prepared') return false
+      const clips = jobs.filter(clip => clip.batch_parent === job.id)
+      return clips.length && clips.every(clip => clip.state === 'ready')
+    })
+    const signature = JSON.stringify([data, ready.map(job => job.id), batches.map(job => job.id)])
     if (signature === campaignSignature) return
     campaignSignature = signature
     document.getElementById('campaign-list').replaceChildren(...(data.campaigns.length
-      ? data.campaigns.map(campaign => campaignCard(campaign, ready))
+      ? data.campaigns.map(campaign => campaignCard(campaign, ready, batches))
       : [element('p', 'No plans yet. Start with your content goal.')]))
     document.getElementById('publication-list').replaceChildren(...(data.posts.length
       ? data.posts.map(postCard)

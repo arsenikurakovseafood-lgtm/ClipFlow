@@ -58,3 +58,12 @@ strict-schema suggestion when the separately capped planning budget is enabled,
 and lets the owner copy the suggestion into the editable campaign draft. The
 provider cannot create, approve, or publish a campaign. Recovery fences out
 unconfirmed paid attempts. This planning contract is tested with fixtures.
+
+Batch Studio adds a bounded local-media workflow for the private Render
+preview. It generates separate independently leased vertical exports with
+selected subtitle colors, optional authorized music and proposed release days.
+Speech selection is rule-based on subtitle text and timestamps. The batch
+planner prioritizes the maximum number of non-overlapping excerpts before
+ranking goal relevance. The same batch can be scheduled into the approved
+campaign's manual handoff queue. R2 batch upload, publishing APIs, social
+analytics ingestion and creative feedback remain pending.

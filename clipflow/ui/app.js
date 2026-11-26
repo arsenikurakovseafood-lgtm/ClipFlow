@@ -42,6 +42,19 @@ async function refresh() {
       detail.textContent = job.state === 'ready' ? 'Ready · ' + job.elapsed.toFixed(2) + ' s render'
         : (job.error || job.state[0].toUpperCase() + job.state.slice(1))
       row.append(detail)
+      if (job.release_day) {
+        const release = document.createElement('small')
+        release.textContent = 'Suggested release · day ' + job.release_day + ' of ' + job.release_days
+        row.append(release)
+      }
+      if (job.reference) {
+        const reference = document.createElement('a')
+        reference.textContent = 'Source reference'
+        reference.href = job.reference
+        reference.target = '_blank'
+        reference.rel = 'noopener noreferrer'
+        row.append(reference)
+      }
       return row
     }))
   } catch {

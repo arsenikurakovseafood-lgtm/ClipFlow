@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from clipflow.auth import LoginUnavailable, OwnerAuth, PreviewAuth, session_header
+from clipflow.batch import BATCH_OUTPUT_BYTES, MAX_BATCH, MAX_TRANSCRIPT, PALETTES
 from clipflow.campaigns import Campaigns, Conflict
 from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Limit, Queue
@@ -20,7 +21,7 @@ from clipflow.transcription import enabled as transcription_enabled
 MAX_UPLOAD = 25 * 1024 * 1024
 QUOTA = 250 * 1024 * 1024
 DEMO_RESERVATION = 1000
-DEMO_MONTHLY_BUDGET = 10000
+DEMO_MONTHLY_BUDGET = 30000
 WEB = Path(__file__).with_name('ui')
 
 
@@ -102,13 +103,14 @@ class OwnerAPI(BaseHTTPRequestHandler):
             return self.reply(200, {'sign_out': self.server.auth is not None,
                                     'automatic_captions': self.server.transcription_enabled,
                                     'direct_upload': self.server.media is not None,
+                                    'batch_editing': self.server.media is None,
                                     'ai_planner': planner_budget() > 0,
                                     'upload_limit_mib': 8 if isinstance(self.server.auth, PreviewAuth) else 25,
                                     'clip_limit_seconds': 10 if isinstance(self.server.auth, PreviewAuth) else 60})
         files = {'/signin': ('signin.html', 'text/html'), '/signin.js': ('signin.js', 'text/javascript'),
                  '/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'),
                  '/app.css': ('app.css', 'text/css'),
-                 '/campaigns.js': ('campaigns.js', 'text/javascript')}
+                 '/campaigns.js': ('campaigns.js', 'text/javascript'), '/batch.js': ('batch.js', 'text/javascript')}
         if url.path in files:
             name, mime = files[url.path]
             content = (WEB / name).read_bytes()
@@ -197,7 +199,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
                 return self.reply(202, {'id': self.server.plans.request(data.get('goal'), planner_budget())})
             if self.path == '/api/campaigns':
                 return self.reply(201, {'id': self.server.campaigns.create(data)})
-            match = re.fullmatch(r'/api/campaigns/([0-9a-f]{32})/(approve|pause|resume|stop|schedule)', self.path)
+            match = re.fullmatch(r'/api/campaigns/([0-9a-f]{32})/(approve|pause|resume|stop|schedule|schedule-batch)', self.path)
             post = re.fullmatch(r'/api/manual-posts/([0-9a-f]{32})/handoff', self.path)
             if post:
                 self.server.campaigns.complete(post[1])
@@ -205,6 +207,8 @@ class OwnerAPI(BaseHTTPRequestHandler):
                 return self.reply(404, {'error': 'Item unavailable'})
             elif match[2] == 'schedule':
                 self.server.campaigns.schedule(match[1], data)
+            elif match[2] == 'schedule-batch':
+                self.server.campaigns.schedule_batch(match[1], data)
             else:
                 self.server.campaigns.transition(match[1], match[2])
             return self.reply(200, {'ok': True})
@@ -212,7 +216,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
             return self.reply(429, {'error': str(error)})
         except Conflict as error:
             return self.reply(409, {'error': str(error)})
-        except (ValueError, TimeoutError) as error:
+        except (ValueError, OverflowError, TimeoutError) as error:
             return self.reply(400, {'error': str(error)})
 
     def do_POST(self):
@@ -222,6 +226,8 @@ class OwnerAPI(BaseHTTPRequestHandler):
             return
         if self.path == '/api/plans' or self.path.startswith(('/api/campaigns', '/api/manual-posts')):
             return self.campaign_request()
+        if self.path == '/api/batches':
+            return self.batch_request()
         complete = re.fullmatch(r'/api/uploads/([0-9a-f]{32})/complete', self.path)
         if complete:
             return self.complete_upload(complete[1])
@@ -266,7 +272,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
         spec = json.dumps(data)
         try:
             # Reserve source plus room for two lease attempts and stale output.
-            storage = size + 2 * MAX_OUTPUT_BYTES
+            storage = size + 2 * (BATCH_OUTPUT_BYTES if preview else MAX_OUTPUT_BYTES)
             job_id, created = self.server.queue.reserve(key, name, spec, storage, cost=DEMO_RESERVATION,
                                                         budget=DEMO_MONTHLY_BUDGET, quota=QUOTA)
         except Limit as error:
@@ -299,6 +305,71 @@ class OwnerAPI(BaseHTTPRequestHandler):
                 self.server.queue.uploaded(job_id)
             except OSError:
                 shutil.rmtree(directory, ignore_errors=True)
+                self.server.queue.abandon(job_id)
+                return self.reply(400, {'error': 'Upload was interrupted'})
+        self.reply(202, {'id': job_id})
+
+    def batch_request(self):
+        if self.headers.get('Sec-Fetch-Site') not in (None, 'same-origin'):
+            return self.reply(403, {'error': 'Cross-origin upload refused'})
+        if self.server.media:
+            return self.reply(409, {'error': 'Batch editing is currently available in Owner Preview storage'})
+        if self.headers.get_content_type() != 'application/octet-stream' or self.headers.get('Transfer-Encoding'):
+            return self.reply(415, {'error': 'Upload a source from the Batch Studio form'})
+        try:
+            video, music, captions, total = (int(self.headers[field]) for field in
+                ('X-Source-Bytes', 'X-Music-Bytes', 'X-Subtitle-Bytes', 'Content-Length'))
+            mode, style, key = (self.headers[field] for field in
+                                ('X-Batch-Mode', 'X-Caption-Style', 'Idempotency-Key'))
+            count, days = int(self.headers['X-Clip-Count']), int(self.headers['X-Release-Days'])
+            goal = unquote(self.headers['X-Content-Goal']).strip()
+            reference = unquote(self.headers.get('X-Batch-Reference', '')).strip()
+            if reference:
+                address = urlsplit(reference)
+                if not (len(reference) <= 400 and address.scheme == 'https'
+                        and address.netloc in ('www.youtube.com', 'youtube.com', 'youtu.be', 'open.spotify.com')):
+                    raise ValueError()
+            name = unquote(self.headers.get('X-Clip-Name', 'Batch source'))[:120]
+            if not (0 < video <= 8 * 1024 * 1024 and 0 <= music <= 8 * 1024 * 1024
+                    and 0 <= captions <= MAX_TRANSCRIPT and total == video + music + captions
+                    and re.fullmatch(r'[0-9a-f-]{36}', key)
+                    and 1 <= count <= MAX_BATCH and 1 <= days <= 30 and 1 <= len(goal) <= 500
+                    and style in PALETTES and mode in ('speech', 'music')):
+                raise ValueError()
+        except (TypeError, ValueError):
+            return self.reply(400, {'error': 'Check the input files, goal, clip count and release window'})
+        if mode == 'speech' and (music or not (captions or self.server.transcription_enabled)):
+            return self.reply(400, {'error': 'Spoken highlights require timed SRT or VTT subtitles in this preview'})
+        if mode == 'music' and not music:
+            return self.reply(400, {'error': 'Attach the authorized track audio file for music promos'})
+        spec = json.dumps({'batch': True, 'mode': mode, 'caption_style': style, 'goal': goal,
+                           'count': count, 'days': days, 'source_seconds': 120,
+                           'clip_seconds': 10, 'size': 0, 'reference': reference})
+        try:
+            job_id, created = self.server.queue.reserve(key, 'Batch: ' + name, spec,
+                total + 2 * count * BATCH_OUTPUT_BYTES,
+                cost=count * DEMO_RESERVATION, budget=DEMO_MONTHLY_BUDGET, quota=QUOTA)
+        except Limit as error:
+            return self.reply(429, {'error': str(error)})
+        # A batch reserves the full total until its exports expire. Source expiry does not
+        # reduce the reservation because children share one source until rendering ends.
+        if created:
+            folder = self.server.root / job_id
+            try:
+                folder.mkdir(mode=0o700)
+                for filename, remaining in (('source', video), ('music', music), ('captions', captions)):
+                    if not remaining:
+                        continue
+                    with (folder / filename).open('xb') as target:
+                        while remaining:
+                            block = self.rfile.read(min(remaining, 65536))
+                            if not block:
+                                raise OSError('Incomplete upload')
+                            target.write(block)
+                            remaining -= len(block)
+                self.server.queue.uploaded(job_id)
+            except OSError:
+                shutil.rmtree(folder, ignore_errors=True)
                 self.server.queue.abandon(job_id)
                 return self.reply(400, {'error': 'Upload was interrupted'})
         self.reply(202, {'id': job_id})

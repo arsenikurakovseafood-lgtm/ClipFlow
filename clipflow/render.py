@@ -61,9 +61,18 @@ def subtitles(cues, start, end):
     return '\n'.join(blocks)
 
 
-def render(source: Path, output: Path, start: float, end: float, cues: list[Cue]):
+def render(source: Path, output: Path, start: float, end: float, cues: list[Cue], *,
+           caption_color='00FFFFFF', music=None, music_start=0, output_limit=MAX_OUTPUT_BYTES):
     """Write a verified MP4 atomically. Cues use absolute source timestamps."""
     source, output = source.resolve(), output.resolve()
+    if len(caption_color) != 8 or any(c not in '0123456789ABCDEF' for c in caption_color):
+        raise ValueError('Invalid caption style')
+    audio_input = []
+    audio_map = '0:a:0?'
+    if music is not None:
+        audio_input = [*LOCAL_PROTOCOLS, '-stream_loop', '-1', '-ss', str(music_start),
+                       '-i', str(music.resolve())]
+        audio_map = '1:a:0'
     metadata = source.stat()
     if not stat.S_ISREG(metadata.st_mode) or not 0 < metadata.st_size <= MAX_SOURCE_BYTES:
         raise ValueError('Source must be a regular staged file within the size limit')
@@ -71,6 +80,9 @@ def render(source: Path, output: Path, start: float, end: float, cues: list[Cue]
         raise ValueError('Invalid output or caption count')
     if not (math.isfinite(start) and math.isfinite(end) and 0 <= start < end and 1 <= end - start <= 60):
         raise ValueError('Select a clip between 1 and 60 seconds')
+    audio_filter = []
+    if music is not None:
+        audio_filter = ['-af', f'afade=t=in:d=0.12,afade=t=out:st={end - start - 0.2:.3f}:d=0.2']
     info = probe(source)
     duration = float(info['format']['duration'])
     if not 0 < duration <= MAX_SOURCE_SECONDS or end > duration:
@@ -86,22 +98,23 @@ def render(source: Path, output: Path, start: float, end: float, cues: list[Cue]
                    'crop=720:1280,setsar=1,fps=30')
         if caption_body:
             (Path(work) / 'clip.srt').write_text(caption_body, encoding='utf-8')
-            filters += ",subtitles=clip.srt:force_style='FontName=DejaVu Sans,FontSize=17,Outline=2,MarginV=32'"
+            filters += (",subtitles=clip.srt:force_style='FontName=DejaVu Sans,FontSize=17,"
+                        f"Outline=2,MarginV=32,PrimaryColour=&H{caption_color}'")
         run(
             'ffmpeg', '-nostdin', '-v', 'error', '-filter_threads', '2',
             *LOCAL_PROTOCOLS, '-threads', '2', '-ss', str(start), '-i', str(source),
-            '-t', str(end - start), '-map', f"0:{video['index']}", '-map', '0:a:0?',
+            *audio_input, '-t', str(end - start), '-map', f"0:{video['index']}", '-map', audio_map,
             '-map_metadata', '-1', '-map_chapters', '-1', '-vf', filters,
             '-c:v', 'libx264', '-threads', '2', '-preset', 'veryfast',
-            '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ac', '2',
-            '-maxrate', '3M', '-bufsize', '6M', '-fs', str(MAX_OUTPUT_BYTES),
+            '-pix_fmt', 'yuv420p', *audio_filter, '-c:a', 'aac', '-ac', '2',
+            '-maxrate', '3M', '-bufsize', '6M', '-fs', str(output_limit),
             '-movflags', '+faststart', str(staged), timeout=240, cwd=work,
         )
         result = probe(staged)
         stream = next(s for s in result['streams'] if s['codec_type'] == 'video')
         actual_duration = float(result['format']['duration'])
         if ((stream['width'], stream['height'], stream['codec_name']) != (720, 1280, 'h264')
-                or staged.stat().st_size > MAX_OUTPUT_BYTES
+                or staged.stat().st_size > output_limit
                 or abs(actual_duration - (end - start)) > 0.2):
             raise ValueError('Rendered file failed quality checks')
         os.replace(staged, output)

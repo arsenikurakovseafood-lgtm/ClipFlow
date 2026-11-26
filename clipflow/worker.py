@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from clipflow.batch import BATCH_OUTPUT_BYTES, PALETTES, BatchError, stage_batch
 from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Queue
 from clipflow.r2 import PrivateMedia
@@ -28,6 +29,13 @@ def render_job(queue, job, data, source, output, transcriber):
         if transcriber is None:
             raise TranscriptionUnavailable('Automatic captions are paused.')
         cues = transcriber.captions(queue, job, source, start_time, end_time)
+    if data.get('batch_parent'):
+        music = source.parent / 'music' if 'music_start' in data else None
+        return render(source, output, start_time, end_time, cues,
+                      caption_color=PALETTES[data['caption_style']], music=music,
+                      music_start=data.get('music_start', 0), output_limit=BATCH_OUTPUT_BYTES)
+    if os.environ.get('CLIPFLOW_INTERNAL_RENDER_PREVIEW') == 'true':
+        return render(source, output, start_time, end_time, cues, output_limit=BATCH_OUTPUT_BYTES)
     return render(source, output, start_time, end_time, cues)
 
 
@@ -38,6 +46,9 @@ def work(root, queue, job, transcriber=None, media=None, owner_id=None):
     start = time.monotonic()
     remote = data.get('storage') == 'r2'
     try:
+        if data.get('batch'):
+            stage_batch(root, queue, job, data, transcriber)
+            return
         if remote:
             if not media:
                 raise TranscriptionUnavailable('Private cloud storage is unavailable.')
@@ -48,8 +59,10 @@ def work(root, queue, job, transcriber=None, media=None, owner_id=None):
                 result = render_job(queue, job, data, source, Path(scratch) / 'output.mp4', transcriber)
                 media.save_output(owner_id, job['id'], job['lease_token'], Path(scratch) / 'output.mp4')
         else:
-            result = render_job(queue, job, data, directory / 'source', output, transcriber)
-    except TranscriptionUnavailable as error:
+            source_directory = root / data.get('batch_parent', job['id'])
+            directory.mkdir(mode=0o700, exist_ok=True)
+            result = render_job(queue, job, data, source_directory / 'source', output, transcriber)
+    except (BatchError, TranscriptionUnavailable) as error:
         queue.finish(job, error=str(error))
     except (ValueError, OSError, KeyError, StopIteration):
         queue.finish(job, error='Source or clip could not be processed. Check the video and clip range.')
@@ -84,6 +97,8 @@ def sweep(root, queue, media, owner_id, *, now, source_seconds, output_seconds):
                         shutil.rmtree(directory)
                 else:
                     (directory / 'source').unlink(missing_ok=True)
+                    (directory / 'music').unlink(missing_ok=True)
+                    (directory / 'captions').unlink(missing_ok=True)
             queue.reclaimed(job, spec.get('size', 0))
         except Exception:
             print(f"Media cleanup will retry for job {job['id']}", file=sys.stderr)

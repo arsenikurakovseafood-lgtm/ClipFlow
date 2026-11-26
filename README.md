@@ -107,3 +107,28 @@ size is 8 MiB, source duration is two minutes, and clip duration is 10 seconds.
 Render Free can sleep and discard local files between restarts. For a durable
 studio, use the private owner deployment with persistent storage. No paid
 integration runs in the Free preview.
+
+## Batch Studio
+
+Choose **Spoken highlights** for authorized source footage and an SRT or
+WebVTT file. Describe the goal, choose how many clips to prepare (up to ten),
+select a subtitle color, and set a release window. Selection favors complete,
+non-overlapping passages with more words related to the goal. The studio
+reports if the source has fewer suitable passages than requested.
+
+Choose **Music promos** to add an authorized audio file. The worker prepares
+distinct excerpts around scene changes where available, replacing the
+footage audio with excerpts from the uploaded track. Each clip is rendered
+as its own vertical MP4. Each source or audio file is limited to 8 MiB,
+source video to two minutes, and exported clips to 10 seconds. The free
+preview uses timestamped subtitles from the owner.
+
+Review the renders, approve a campaign, and select **Schedule entire batch**
+with a first release time. The queue spreads the clips across the selected
+release days. Campaign handoff remains manual.
+
+YouTube and Spotify URLs can be linked as references. Files for editing come
+from authorized uploads. Media is never fetched from those URLs.
+
+- [YouTube API developer policies](https://developers.google.com/youtube/terms/developer-policies/)
+- [Spotify developer policy](https://developer.spotify.com/policy)
