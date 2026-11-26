@@ -156,7 +156,8 @@ The original video may be longer. ClipFlow sends both timestamps to VidFetch,
 verifies that the returned MP4 matches the selected duration, and renders from
 that file. A subtitle file uses the original video's timestamps. If conversion
 fails, replace the source with a file already cut to the chosen window.
-**Try sample range** selects 00:06–00:18 from ClipFlow's own walkthrough.
+**Run sample now** queues 00:06–00:18 from ClipFlow's own walkthrough in one
+click and opens Content to track both clips.
 Uploads and direct R2 files also support an optional range for editing.
 
 #### Configure segment conversion on an approved cloud deployment

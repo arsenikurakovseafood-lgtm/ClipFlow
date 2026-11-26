@@ -11,6 +11,7 @@ SCENES = (
     ('MEASURE THE RESULT', 'Compare real clicks and conversions before changing your hook.', '5FD5FF'),
 )
 SCENE_SECONDS = 6
+SAMPLE_SECONDS = len(SCENES) * SCENE_SECONDS
 FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 
 
@@ -38,11 +39,11 @@ def stage_sample(folder, mode, *, authored_captions=True):
     if authored_captions and mode != 'music' and not (folder / 'captions').is_file():
         cues = [Cue(index * SCENE_SECONDS, (index + 1) * SCENE_SECONDS, speech)
                 for index, (_, speech, _) in enumerate(SCENES)]
-        (folder / 'captions').write_text(subtitles(cues, 0, len(SCENES) * SCENE_SECONDS), encoding='utf-8')
+        (folder / 'captions').write_text(subtitles(cues, 0, SAMPLE_SECONDS), encoding='utf-8')
     if mode == 'music' and not (folder / 'music').is_file():
         with TemporaryDirectory(prefix='.track-', dir=folder) as directory:
             track = Path(directory) / 'sample.wav'
             run('ffmpeg', '-nostdin', '-v', 'error', '-f', 'lavfi', '-i',
                 'aevalsrc=0.22*sin(2*PI*110*t)+0.12*sin(2*PI*165*t)+0.08*sin(2*PI*220*t):s=22050',
-                '-af', 'tremolo=f=4:d=0.7', '-t', str(len(SCENES) * SCENE_SECONDS), str(track))
+                '-af', 'tremolo=f=4:d=0.7', '-t', str(SAMPLE_SECONDS), str(track))
             track.replace(folder / 'music')

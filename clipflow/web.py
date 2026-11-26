@@ -13,6 +13,7 @@ from clipflow.auth import LoginUnavailable, OwnerAuth, PreviewAuth, session_head
 from clipflow.batch import BATCH_OUTPUT_BYTES, MAX_BATCH, MAX_TRANSCRIPT, PALETTES, direct_source_url
 from clipflow.campaigns import Campaigns, Conflict
 from clipflow.converter import DISABLED, monthly_limit, segment_range
+from clipflow.sample import SAMPLE_SECONDS
 from clipflow.insights import Insights
 from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Limit, Queue
@@ -377,6 +378,8 @@ class OwnerAPI(BaseHTTPRequestHandler):
                     trim = segment_range(segment_start, segment_end)
                 except ValueError as error:
                     return self.reply(400, {'error': str(error)})
+                if sample and trim['end'] > SAMPLE_SECONDS:
+                    return self.reply(400, {'error': f'The sample is {SAMPLE_SECONDS} seconds long. Set To to 0:{SAMPLE_SECONDS} or earlier.'})
             youtube = False
             if source_url:
                 canonical = youtube_url(source_url)

@@ -126,4 +126,4 @@ textarea{min-height:100px;resize:vertical}
 .studio-notice{padding:11px 12px;border-left:2px solid var(--accent)}
 .studio-notice button{margin-top:8px;padding:6px 10px}
 #studio-advanced{border-top:1px solid var(--edge);padding-top:12px}
-#batch-status:empty,#caption-availability:empty{display:none}
+#batch-status:empty,#caption-availability:empty,#sample-status:empty{display:none}

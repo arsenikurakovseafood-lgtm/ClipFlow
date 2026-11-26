@@ -3,9 +3,12 @@ const batchMode = batchForm.elements.namedItem('mode')
 const batchTrack = document.getElementById('batch-track')
 const batchStatus = document.getElementById('batch-status')
 let batchKey
+let sampleKey
 let batchSession
 let submittingBatch = false
 const sourceKind = batchForm.elements.namedItem('sourceKind')
+const createClips = batchForm.querySelector('button[type=submit]')
+const runSample = document.getElementById('try-segment')
 function updateSourceKind() {
   const converter = sourceKind.value === 'youtube'
   const sample = sourceKind.value === 'sample'
@@ -26,21 +29,26 @@ function updateSourceKind() {
     ? 'Paste the link to a YouTube video or Short.' : 'Paste the direct HTTPS link to an R2 video file.'
   const blocked = converter && !batchSession?.youtube_converter
   document.getElementById('converter-availability').hidden = !blocked
-  batchForm.querySelector('button[type=submit]').hidden = blocked
-  batchForm.querySelector('button[type=submit]').disabled = submittingBatch || blocked
+  createClips.hidden = blocked
+  createClips.disabled = submittingBatch || blocked
   if (batchSession) updateBatchMode(batchSession)
 }
-sourceKind.addEventListener('change', updateSourceKind)
-document.getElementById('try-segment').addEventListener('click', () => {
-  sourceKind.value = 'sample'
-  batchMode.value = 'visual'
-  batchForm.elements.segmentStart.value = '0:06'
-  batchForm.elements.segmentEnd.value = '0:18'
-  batchForm.elements.count.value = '2'
-  if (!batchForm.elements.goal.value.trim()) batchForm.elements.goal.value = 'Show how to create and review clips'
+sourceKind.addEventListener('change', () => {
+  batchForm.elements.segmentStart.value = ''
+  batchForm.elements.segmentEnd.value = ''
+  document.getElementById('batch-segment').open = false
   batchKey = undefined
   updateSourceKind()
-  batchForm.querySelector('button[type=submit]').focus()
+})
+runSample.addEventListener('click', () => {
+  const values = new FormData()
+  const example = {sourceKind: 'sample', mode: 'visual', segmentStart: '0:06', segmentEnd: '0:18',
+    count: '2', days: '1', style: 'white', goal: 'ClipFlow walkthrough', campaign: '', reference: '',
+    creative: 'standard', hook: '', cta: ''}
+  for (const [field, value] of Object.entries(example)) values.set(field, value)
+  values.set('captions', new Blob())
+  if (batchSession?.automatic_captions) values.set('automaticCaptions', 'on')
+  void submitBatch(values, runSample)
 })
 
 function updateBatchMode(session) {
@@ -105,27 +113,33 @@ batchForm.elements.campaign.addEventListener('change', () => {
 batchForm.addEventListener('input', () => { batchKey = undefined })
 batchForm.addEventListener('submit', async event => {
   event.preventDefault()
-  const values = new FormData(batchForm)
+  await submitBatch(new FormData(batchForm), createClips)
+})
+
+async function submitBatch(values, button) {
+  if (submittingBatch || !batchSession) return
+  const example = button === runSample
+  const status = example ? document.getElementById('sample-status') : batchStatus
   const converter = values.get('sourceKind') === 'youtube'
   const sourceUrl = converter || values.get('sourceKind') === 'link' ? values.get('sourceUrl').trim() : ''
   const sample = values.get('sourceKind') === 'sample'
   const source = sample || sourceUrl ? null : values.get('source')
   const music = values.get('mode') === 'music' ? values.get('music') : null
   const captions = values.get('captions')
-  const button = batchForm.querySelector('button[type=submit]')
-  batchStatus.textContent = 'Staging source and preparing the batch…'
+  status.textContent = example ? 'Submitting the sample…' : 'Staging source and preparing the batch…'
   submittingBatch = true
-  button.disabled = true
+  createClips.disabled = true
+  runSample.disabled = true
   button.setAttribute('aria-busy', 'true')
   button.textContent = 'Submitting…'
-  batchKey ||= crypto.randomUUID()
+  const key = example ? (sampleKey ||= crypto.randomUUID()) : (batchKey ||= crypto.randomUUID())
   try {
     const bundle = new Blob([...(source ? [source] : []), ...(music ? [music] : []), captions])
     const response = await studioFetch('/api/batches', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/octet-stream',
-        'Idempotency-Key': batchKey,
+        'Idempotency-Key': key,
         'X-Source-Bytes': String(source?.size || 0),
         'X-Music-Bytes': String(music?.size || 0),
         'X-Subtitle-Bytes': String(captions.size),
@@ -154,17 +168,22 @@ batchForm.addEventListener('submit', async event => {
     const result = await response.json()
     if (!response.ok) throw new Error(result.error)
     if (batchSession.direct_upload) await uploadPrivateMedia(result, bundle)
-    batchStatus.textContent = converter ? 'Segment conversion queued. Open Content to track your clips.' : sourceUrl
+    status.textContent = converter ? 'Segment conversion queued. Open Content to track your clips.' : sourceUrl
       ? 'Video import queued. Open Content to check whether the source was retrieved.'
       : 'Batch queued. Open Content to track rendering.'
+    if (example) {
+      sampleKey = undefined
+      location.hash = 'content'
+    }
     await refresh()
   } catch (error) {
-    batchStatus.textContent = error.name === 'TimeoutError' ? 'The server did not confirm the upload. Check Content before trying again.'
+    status.textContent = error.name === 'TimeoutError' ? 'The server did not confirm the upload. Check Content before trying again.'
       : error.message || 'Batch upload failed.'
   } finally {
     submittingBatch = false
     button.removeAttribute('aria-busy')
-    button.textContent = 'Create clips'
-    button.disabled = sourceKind.value === 'youtube' && !batchSession?.youtube_converter
+    button.textContent = example ? 'Run sample now' : 'Create clips'
+    createClips.disabled = sourceKind.value === 'youtube' && !batchSession?.youtube_converter
+    runSample.disabled = false
   }
-})
+}

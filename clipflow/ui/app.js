@@ -129,8 +129,10 @@ async function refresh() {
         if (!selected) show(job)
       }
       const detail = document.createElement('small')
+      if (job.state === 'failed') row.dataset.state = 'failed'
       detail.textContent = job.state === 'ready' ? 'Ready · ' + job.elapsed.toFixed(2) + ' s render'
-        : (job.error || job.state[0].toUpperCase() + job.state.slice(1))
+        : (job.state === 'failed' && job.error ? 'Failed · ' + job.error
+          : job.error || job.state[0].toUpperCase() + job.state.slice(1))
       row.append(detail)
       if (job.trim_end !== null) {
         const interval = document.createElement('small')
