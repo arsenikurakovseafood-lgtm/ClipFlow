@@ -13,6 +13,46 @@ function show(job) {
   byId('preview').hidden = false
 }
 
+function sourceRecovery(job) {
+  const existing = byId('replace-source-' + job.id)
+  if (existing) return existing
+  const form = document.createElement('form')
+  form.id = 'replace-source-' + job.id
+  form.className = 'source-recovery'
+  form.innerHTML = `
+    <small>Your track and clip settings are saved while this batch is available.</small>
+    <label>Replacement video <input type="file" name="video" accept=".mp4,.mov,.webm"></label>
+    <label>Or direct Cloudflare R2 file link <input type="url" name="url" maxlength="2400"></label>
+    <button type="submit">Replace video and retry</button>
+    <small role="status"></small>`
+  const button = form.querySelector('button')
+  const status = form.querySelector('[role=status]')
+  form.addEventListener('submit', async event => {
+    event.preventDefault()
+    const file = form.elements.video.files[0]
+    const url = form.elements.url.value.trim()
+    if (Boolean(file) === Boolean(url)) {
+      status.textContent = 'Choose one video file or enter one direct R2 file link.'
+      return
+    }
+    button.disabled = true
+    status.textContent = 'Submitting replacement…'
+    try {
+      const mediaTypes = {mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm'}
+      const options = file
+        ? {body: file, headers: {'Content-Type': mediaTypes[file.name.split('.').pop().toLowerCase()] || file.type}}
+        : {headers: {'X-Replacement-URL': encodeURIComponent(url)}}
+      const response = await fetch('/api/batches/' + job.id + '/replace-source', {method: 'POST', ...options})
+      if (!response.ok) throw new Error((await response.json()).error)
+      await refresh()
+    } catch (error) {
+      status.textContent = error.message || 'Could not replace the video. Try again.'
+      button.disabled = false
+    }
+  })
+  return form
+}
+
 async function refresh() {
   try {
     const response = await fetch('/api/jobs')
@@ -42,6 +82,7 @@ async function refresh() {
       detail.textContent = job.state === 'ready' ? 'Ready · ' + job.elapsed.toFixed(2) + ' s render'
         : (job.error || job.state[0].toUpperCase() + job.state.slice(1))
       row.append(detail)
+      if (job.source_replaceable) row.append(sourceRecovery(job))
       if (job.release_day) {
         const release = document.createElement('small')
         release.textContent = 'Suggested release · day ' + job.release_day + ' of ' + job.release_days

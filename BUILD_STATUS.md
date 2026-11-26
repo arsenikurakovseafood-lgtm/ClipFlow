@@ -71,4 +71,13 @@ analytics ingestion and creative feedback remain pending.
 Owner Preview includes an experimental YouTube source adapter. Tests cover
 input normalization, staging, size guards, and access-error handling using
 fixtures. A metadata-only request from Codex Cloud was rejected by the cloud
-proxy. Successful network ingestion on Render has not been verified.
+proxy. The Render owner preview also reported a provider rejection. Successful
+network ingestion on Render remains unverified.
+
+When the provider rejects access or an R2 import fails, Content offers a source
+replacement on the existing batch while its staged assets are retained. A new
+video file or a direct R2 file link requeues the same job and keeps its track,
+goal, clip settings and budget reservation. The cloud browser test simulates a
+YouTube 403, checks authorization and URL validation, and plays a real FFmpeg
+export after replacing the source with a test MP4. Render's free preview uses
+temporary storage, so redeployments and restarts can discard existing batches.

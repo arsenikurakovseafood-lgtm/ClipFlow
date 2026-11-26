@@ -10,7 +10,7 @@ from tempfile import TemporaryDirectory
 
 from clipflow.batch import BATCH_OUTPUT_BYTES, PALETTES, BatchError, stage_batch
 from clipflow.planner import Plans, planner_budget
-from clipflow.queue import Queue
+from clipflow.queue import Queue, source_retention_seconds
 from clipflow.r2 import PrivateMedia
 from clipflow.render import Cue, probe, render
 from clipflow.transcription import Transcriber, TranscriptionUnavailable
@@ -106,6 +106,7 @@ def sweep(root, queue, media, owner_id, *, now, source_seconds, output_seconds):
                     (directory / 'source').unlink(missing_ok=True)
                     (directory / 'music').unlink(missing_ok=True)
                     (directory / 'captions').unlink(missing_ok=True)
+                    (directory / 'source-replacement').unlink(missing_ok=True)
             queue.reclaimed(job, spec.get('size', 0))
         except Exception:
             print(f"Media cleanup will retry for job {job['id']}", file=sys.stderr)
@@ -130,7 +131,7 @@ def main():
     owner_id = os.environ.get('CLIPFLOW_OWNER_ID')
     if media and not owner_id:
         parser.error('Private cloud storage requires a configured owner ID')
-    source_seconds = max(1, int(os.environ.get('CLIPFLOW_SOURCE_RETENTION_HOURS', '24'))) * 3600
+    source_seconds = source_retention_seconds()
     output_seconds = max(1, int(os.environ.get('CLIPFLOW_OUTPUT_RETENTION_HOURS', '168'))) * 3600
     next_sweep = 0
     while True:

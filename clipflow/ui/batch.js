@@ -76,7 +76,9 @@ batchForm.addEventListener('submit', async event => {
     })
     const result = await response.json()
     if (!response.ok) throw new Error(result.error)
-    batchStatus.textContent = 'Batch accepted. Watch the render library for clips.'
+    batchStatus.textContent = sourceUrl
+      ? 'Video import queued. Open Content to check whether the source was retrieved.'
+      : 'Batch queued. Open Content to track rendering.'
     await refresh()
   } catch (error) {
     batchStatus.textContent = error.message || 'Batch upload failed.'

@@ -16,6 +16,7 @@ from clipflow.render import Cue, LOCAL_PROTOCOLS, probe
 MAX_BATCH = 10
 MAX_TRANSCRIPT = 128 * 1024
 BATCH_OUTPUT_BYTES = 5 * 1024 * 1024
+R2_IMPORT_FAILED = 'Could not import the video. Check the R2 link, expiry, and 8 MiB limit.'
 PALETTES = {
     'white': '00FFFFFF',
     'pink': '008728FF',
@@ -162,7 +163,7 @@ def fetch_source(url, destination, opener=None):
                     remaining -= len(chunk)
         staged.replace(destination)
     except (OSError, ValueError) as error:
-        raise BatchError('Could not import the video. Check the R2 link, expiry, and 8 MiB limit.') from error
+        raise BatchError(R2_IMPORT_FAILED) from error
     finally:
         staged.unlink(missing_ok=True)
 

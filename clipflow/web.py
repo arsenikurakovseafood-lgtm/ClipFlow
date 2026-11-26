@@ -16,7 +16,7 @@ from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Limit, Queue
 from clipflow.r2 import MEDIA_TYPES, PrivateMedia
 from clipflow.render import MAX_OUTPUT_BYTES
-from clipflow.youtube import youtube_url
+from clipflow.youtube import SOURCE_LIMIT, youtube_url
 from clipflow.transcription import enabled as transcription_enabled
 
 MAX_UPLOAD = 25 * 1024 * 1024
@@ -230,6 +230,9 @@ class OwnerAPI(BaseHTTPRequestHandler):
             return self.campaign_request()
         if self.path == '/api/batches':
             return self.batch_request()
+        replace = re.fullmatch(r'/api/batches/([0-9a-f]{32})/replace-source', self.path)
+        if replace:
+            return self.replace_batch_source(replace[1])
         complete = re.fullmatch(r'/api/uploads/([0-9a-f]{32})/complete', self.path)
         if complete:
             return self.complete_upload(complete[1])
@@ -391,6 +394,58 @@ class OwnerAPI(BaseHTTPRequestHandler):
                 self.server.queue.abandon(job_id)
                 return self.reply(400, {'error': 'Upload was interrupted'})
         self.reply(202, {'id': job_id})
+
+    def replace_batch_source(self, job_id):
+        if self.headers.get('Sec-Fetch-Site') not in (None, 'same-origin'):
+            return self.reply(403, {'error': 'Cross-origin upload refused'})
+        if self.headers.get('Transfer-Encoding'):
+            return self.reply(415, {'error': 'Use the replacement form in Content'})
+        url = unquote(self.headers.get('X-Replacement-URL', '')).strip()
+        try:
+            size = int(self.headers.get('Content-Length', '0'))
+            if url:
+                if size != 0:
+                    raise ValueError()
+                direct_source_url(url)
+            elif (self.headers.get_content_type() not in MEDIA_TYPES or not 0 < size <= SOURCE_LIMIT):
+                raise ValueError()
+        except ValueError:
+            return self.reply(400, {'error': 'Choose an MP4, MOV or WebM up to 8 MiB, or enter a direct Cloudflare R2 file link.'})
+
+        queue = self.server.queue
+        folder = self.server.root / job_id
+        unavailable = {'error': 'This batch is no longer available for source replacement. Open Studio to start a new batch.'}
+        if not queue.can_replace_batch_source(job_id) or not folder.is_dir():
+            return self.reply(409, unavailable)
+        if url:
+            replaced = queue.replace_batch_source(job_id, folder, source_url=url)
+        else:
+            staged = folder / 'source-replacement'
+            try:
+                target = staged.open('xb')
+            except FileExistsError:
+                return self.reply(409, {'error': 'A replacement upload is already in progress. Try again shortly.'})
+            except OSError:
+                return self.reply(409, unavailable)
+            replaced = False
+            try:
+                with target:
+                    remaining = size
+                    while remaining:
+                        block = self.rfile.read(min(remaining, 65536))
+                        if not block:
+                            raise OSError('Incomplete upload')
+                        target.write(block)
+                        remaining -= len(block)
+                replaced = queue.replace_batch_source(job_id, folder, staged=staged)
+            except OSError:
+                return self.reply(400, {'error': 'Upload was interrupted. Select the video and try again.'})
+            finally:
+                if not replaced:
+                    staged.unlink(missing_ok=True)
+        if not replaced:
+            return self.reply(409, unavailable)
+        return self.reply(202, {'id': job_id})
 
     def complete_upload(self, job_id):
         if self.headers.get('Sec-Fetch-Site') not in (None, 'same-origin'):

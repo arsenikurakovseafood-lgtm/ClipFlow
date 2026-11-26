@@ -1,11 +1,26 @@
 """Persistent single-owner demo queue. Monetary units are integer micro-euros."""
 import json
+import os
 import sqlite3
 import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import datetime, timezone
+
+from clipflow.batch import R2_IMPORT_FAILED
+from clipflow.youtube import ACCESS_REFUSED
+
+REPLACEABLE_BATCH = """state='failed' AND source_removed=0 AND finished_at>?
+    AND json_extract(spec,'$.batch')=1 AND error IN (?,?)"""
+
+
+def source_retention_seconds():
+    return max(1, int(os.environ.get('CLIPFLOW_SOURCE_RETENTION_HOURS', '24'))) * 3600
+
+
+def replacement_window():
+    return time.time() - source_retention_seconds(), ACCESS_REFUSED, R2_IMPORT_FAILED
 
 
 class Limit(Exception):
@@ -111,6 +126,24 @@ class Queue:
             return bool(db.execute("""UPDATE jobs SET state='queued',spec=COALESCE(?,spec)
                 WHERE id=? AND state='uploading'""", (spec, job_id)).rowcount)
 
+    def can_replace_batch_source(self, job_id):
+        with self.transaction() as db:
+            return db.execute(f'SELECT 1 FROM jobs WHERE id=? AND {REPLACEABLE_BATCH}',
+                              (job_id, *replacement_window())).fetchone() is not None
+
+    def replace_batch_source(self, job_id, folder, *, staged=None, source_url=None):
+        with self.transaction() as db:
+            changed = db.execute(f"""UPDATE jobs SET state='queued', attempts=0, error=NULL,
+                finished_at=NULL, lease_token=NULL, lease_until=NULL,
+                spec=json_set(spec,'$.source_url',?) WHERE id=? AND {REPLACEABLE_BATCH}""",
+                (source_url, job_id, *replacement_window())).rowcount
+            if changed:
+                if staged is not None:
+                    staged.replace(folder / 'source')
+                else:
+                    (folder / 'source').unlink(missing_ok=True)
+            return bool(changed)
+
     def abandon(self, job_id):
         with self.transaction() as db:
             db.execute("DELETE FROM jobs WHERE id=? AND state='uploading'", (job_id,))
@@ -181,9 +214,11 @@ class Queue:
 
     def all(self):
         with self.transaction() as db:
-            return [dict(row) for row in db.execute("""SELECT id,name,state,attempts,error,elapsed,
+            return [dict(row) for row in db.execute(f"""SELECT id,name,state,attempts,error,elapsed,
                 reserved,output_bytes,lease_token,
+                CASE WHEN {REPLACEABLE_BATCH} THEN 1 ELSE 0 END AS source_replaceable,
                 json_extract(spec,'$.release_day') AS release_day,
                 json_extract(spec,'$.release_days') AS release_days,
                 json_extract(spec,'$.reference') AS reference,
-                json_extract(spec,'$.batch_parent') AS batch_parent FROM jobs ORDER BY rowid DESC""")]
+                json_extract(spec,'$.batch_parent') AS batch_parent FROM jobs ORDER BY rowid DESC""",
+                replacement_window())]

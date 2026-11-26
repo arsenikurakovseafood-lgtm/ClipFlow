@@ -2,7 +2,7 @@ const assert = require('node:assert/strict')
 const {execFileSync, spawn} = require('node:child_process')
 const {randomBytes} = require('node:crypto')
 const {once} = require('node:events')
-const {mkdtemp, rm} = require('node:fs/promises')
+const {mkdtemp, rm, writeFile} = require('node:fs/promises')
 const {tmpdir} = require('node:os')
 const {join} = require('node:path')
 const {setTimeout: delay} = require('node:timers/promises')
@@ -14,9 +14,11 @@ async function main() {
   const base = 'http://localhost:' + port
   const password = randomBytes(32).toString('base64url')
   const executablePath = process.env.CLIPFLOW_CHROMIUM
+  // Simulate a provider rejection without sending any requests to YouTube.
+  await writeFile(join(root, 'prlimit'), '#!/bin/sh\necho "HTTP Error 403" >&2\nexit 1\n', {mode: 0o700})
   const startPreview = 'import sys; from clipflow import render_preview; render_preview.DATA=sys.argv[1]; sys.exit(render_preview.main())'
   const server = spawn('python3', ['-c', startPreview, root], {
-    env: {...process.env, PORT: port, CLIPFLOW_PREVIEW_PASSWORD: password},
+    env: {...process.env, PATH: root + ':' + process.env.PATH, PORT: port, CLIPFLOW_PREVIEW_PASSWORD: password},
     stdio: 'inherit'
   })
   const exited = once(server, 'exit')
@@ -113,12 +115,38 @@ async function main() {
     await page.getByRole('navigation').getByRole('link', {name: 'Content'}).click()
     await page.locator('#jobs li').filter({hasText: 'Quick visual edit'})
       .getByRole('button', {name: 'Preview', exact: true}).waitFor()
+    const track = join(root, 'authorized-track.wav')
+    execFileSync('ffmpeg', ['-nostdin', '-v', 'error', '-f', 'lavfi', '-i',
+      'sine=frequency=440', '-t', '4', track])
+    await page.getByRole('navigation').getByRole('link', {name: 'Studio'}).click()
+    await batch.getByLabel('What are you making?').selectOption('music')
+    await batch.getByLabel('What should the clips achieve?').fill('Promote the recovery fixture track')
+    await batch.getByLabel('Track audio file').setInputFiles(track)
+    await batch.getByLabel('Where is your video?').selectOption('link')
+    await batch.getByLabel('Video file link').fill('https://www.youtube.com/shorts/abcdefghijk')
+    await batch.getByRole('button', {name: 'Create clips'}).click()
+    await page.getByText(/Video import queued/).waitFor()
+    await page.getByRole('navigation').getByRole('link', {name: 'Content'}).click()
+    const recovery = page.locator('.source-recovery')
+    await recovery.getByLabel('Replacement video').waitFor()
+    const jobId = (await recovery.getAttribute('id')).replace('replace-source-', '')
+    assert.equal((await fetch(base + '/api/batches/' + jobId + '/replace-source', {method: 'POST'})).status, 401)
+    await recovery.getByLabel('Or direct Cloudflare R2 file link').fill('https://www.youtube.com/shorts/abcdefghijk')
+    await recovery.getByRole('button', {name: 'Replace video and retry'}).click()
+    await recovery.getByRole('status').filter({hasText: /enter a direct Cloudflare R2 file link/}).waitFor()
+    await recovery.getByLabel('Or direct Cloudflare R2 file link').clear()
+    await recovery.getByLabel('Replacement video').setInputFiles(batchSource)
+    await recovery.getByRole('button', {name: 'Replace video and retry'}).click()
+    const recovered = page.locator('#jobs li').filter({hasText: 'Promote the recovery fixture track'})
+    await recovered.getByRole('button', {name: 'Preview', exact: true}).click()
+    await player.evaluate(async video => { video.muted = true; await video.play() })
+    await page.waitForFunction(() => document.querySelector('video').currentTime > 0.1)
     await page.getByRole('navigation').getByRole('link', {name: 'Accounts'}).click()
     await page.getByRole('heading', {name: 'Publishing accounts'}).waitFor()
     assert.equal(await page.getByRole('link', {name: 'Open YouTube Studio'}).getAttribute('href'), 'https://studio.youtube.com/')
     await page.getByRole('button', {name: 'Sign out'}).click()
     await page.getByRole('heading', {name: 'Sign in'}).waitFor()
-    console.log('Render preview passed: password gate, upload, real video playback, batch selection and playback, private media, sign out.')
+    console.log('Render preview passed: password gate, upload, real video playback, batch selection and source recovery, private media, sign out.')
   } finally {
     if (browser) await browser.close()
     server.kill()

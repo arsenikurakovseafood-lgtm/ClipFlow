@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 
 VIDEO_ID = re.compile(r'[a-zA-Z0-9_-]{11}')
 SOURCE_LIMIT = 8 * 1024 * 1024
+ACCESS_REFUSED = 'YouTube refused access from this cloud server. Upload the original video.'
 
 
 class ImportFailed(ValueError):
@@ -62,7 +63,7 @@ def fetch_youtube(url, destination):
         if result.returncode or not output.is_file():
             details = result.stderr.casefold()
             if 'confirm you' in details or 'sign in' in details or 'http error 403' in details or '403 forbidden' in details:
-                raise ImportFailed('YouTube refused access from this cloud server. Upload the original video.')
+                raise ImportFailed(ACCESS_REFUSED)
             if 'filter' in result.stdout.casefold() or 'does not pass' in details or 'does not pass' in result.stdout.casefold():
                 raise ImportFailed('Choose a recorded YouTube video between 3 seconds and 2 minutes.')
             if 'requested format' in details or 'filesize' in details:
