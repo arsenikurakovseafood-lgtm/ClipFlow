@@ -1,4 +1,13 @@
 # syntax=docker/dockerfile:1
+FROM python:3.12-slim-bookworm AS speech-models
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip
+WORKDIR /models
+RUN curl --fail --silent --show-error --max-time 120 -o en.zip https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip \
+    && curl --fail --silent --show-error --max-time 120 -o ru.zip https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip \
+    && printf '%s\n' '30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498  en.zip' \
+       '961d5ff98a17f4aa6de69864d0aa71fa5bac682301d2b5d17a3f24c5c99a46d4  ru.zip' | sha256sum -c - \
+    && unzip -q en.zip && unzip -q ru.zip && rm en.zip ru.zip
+
 FROM python:3.12-slim-bookworm
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core \
@@ -7,6 +16,7 @@ RUN apt-get update \
     && useradd --uid 10001 --gid 10001 --no-create-home clipflow \
     && install -d -m 0700 -o clipflow -g clipflow /var/lib/clipflow
 WORKDIR /app
+COPY --from=speech-models /models /opt/clipflow-speech
 COPY requirements.txt /app/requirements.txt
 RUN --mount=type=secret,id=build-ca \
     if [ -r /run/secrets/build-ca ]; then export PIP_CERT=/run/secrets/build-ca; fi; \

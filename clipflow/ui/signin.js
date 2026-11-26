@@ -11,7 +11,7 @@ form.addEventListener('submit', async event => {
       body: JSON.stringify(Object.fromEntries(new FormData(form)))
     })
     if (!response.ok) throw new Error((await response.json()).error)
-    window.location.replace('/')
+    window.location.replace('/' + window.location.hash)
   } catch (error) {
     status.textContent = error.message || 'Sign-in failed'
   } finally {

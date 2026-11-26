@@ -15,7 +15,7 @@ from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Queue, source_retention_seconds
 from clipflow.r2 import PrivateMedia
 from clipflow.render import Cue, probe, render
-from clipflow.transcription import Transcriber, TranscriptionUnavailable
+from clipflow.transcription import CloudSpeech, Transcriber, TranscriptionUnavailable
 
 
 def render_job(queue, job, data, source, output, transcriber):
@@ -164,7 +164,7 @@ def main():
     root = parser.parse_args().root.resolve()
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     queue = Queue(root / 'jobs.sqlite3')
-    transcriber = Transcriber.configured()
+    transcriber = Transcriber.configured() or (CloudSpeech() if CloudSpeech.available() else None)
     converter = VidFetch.configured()
     plans = Plans(queue)
     insights = Insights(queue)

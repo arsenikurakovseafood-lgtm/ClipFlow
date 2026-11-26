@@ -14,7 +14,7 @@ SCENE_SECONDS = 6
 FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 
 
-def stage_sample(folder, mode):
+def stage_sample(folder, mode, *, authored_captions=True):
     source = folder / 'source'
     if not source.is_file():
         with TemporaryDirectory(prefix='.sample-', dir=folder) as directory:
@@ -35,7 +35,7 @@ def stage_sample(folder, mode):
             run('ffmpeg', '-nostdin', '-v', 'error', '-f', 'concat', '-safe', '1', '-i', 'parts.txt',
                 '-c', 'copy', '-movflags', '+faststart', 'sample.mp4', cwd=directory)
             (staging / 'sample.mp4').replace(source)
-    if mode != 'music' and not (folder / 'captions').is_file():
+    if authored_captions and mode != 'music' and not (folder / 'captions').is_file():
         cues = [Cue(index * SCENE_SECONDS, (index + 1) * SCENE_SECONDS, speech)
                 for index, (_, speech, _) in enumerate(SCENES)]
         (folder / 'captions').write_text(subtitles(cues, 0, len(SCENES) * SCENE_SECONDS), encoding='utf-8')

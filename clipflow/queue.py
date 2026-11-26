@@ -327,6 +327,7 @@ class Queue:
                 json_extract(spec,'$.campaign_id') AS campaign_id,
                 json_extract(spec,'$.trim.start') AS trim_start,
                 json_extract(spec,'$.trim.end') AS trim_end,
+                json_extract(spec,'$.trim_locally') AS trim_locally,
                 json_extract(spec,'$.release_day') AS release_day,
                 json_extract(spec,'$.release_days') AS release_days,
                 json_extract(spec,'$.reference') AS reference,

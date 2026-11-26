@@ -1,5 +1,17 @@
 # Build status
 
+## Studio simplification and automatic captions
+
+Studio puts the source, goal, clip count and subtitle controls first. A
+separate Advanced settings section holds the optional subtitle-file override.
+The cloud image ships hash-pinned English and Russian Vosk models. Speech is
+recognized in a separate bounded process on the worker. The sample and files
+can be edited within an optional range. The container smoke check renders a
+sample range and verifies generated cues and playable output. The unauthenticated
+VidFetch homepage demo exposes a URL and output format in its public API
+schema. That schema exposes no time-range parameter. The configured VidFetch
+range API remains gated by credentials and durable accounting.
+
 ## YouTube segment conversion
 
 The earlier direct YouTube importer has been removed. Studio now requests both

@@ -144,8 +144,11 @@ comes from the uploaded track file.
 - [Spotify developer policy](https://developer.spotify.com/policy)
 
 Studio opens from the left sidebar. **Quick clips** takes a video without a
-subtitle file. **Podcast highlights** needs speech timestamps, supplied by
-SRT/WebVTT in the free preview or by an enabled transcription integration.
+subtitle file. The cloud container includes Vosk English and Russian speech
+models. The worker uses them for automatic subtitles and speech-driven
+selection in **Podcast highlights** when OpenAI is disabled. The audio
+language can be selected in Studio. An optional SRT/WebVTT override lives in
+**Advanced settings**.
 **Use a Cloudflare R2 file link** accepts a direct HTTPS video link.
 **Convert a YouTube segment to MP4** accepts an authorized single video or
 Short and a 3–120 second interval, for example **From 12:00** and **To 13:00**.
@@ -153,6 +156,8 @@ The original video may be longer. ClipFlow sends both timestamps to VidFetch,
 verifies that the returned MP4 matches the selected duration, and renders from
 that file. A subtitle file uses the original video's timestamps. If conversion
 fails, replace the source with a file already cut to the chosen window.
+**Try sample range** selects 00:06–00:18 from ClipFlow's own walkthrough.
+Uploads and direct R2 files also support an optional range for editing.
 
 #### Configure segment conversion on an approved cloud deployment
 
@@ -175,9 +180,11 @@ required before offering the feature to customers.
 
 **Original promo** uses approved footage with an independent opening hook and closing call-to-action overlay. Hooks are categorized for comparisons. Campaign analytics only compare owner-entered snapshots with the same time window and sufficient clips and recorded views. When the server has a restricted `CLIPFLOW_YOUTUBE_DATA_API_KEY`, a recorded public YouTube post can also show on-demand official view, like and comment counts. These observations are timestamped, short-lived and displayed independently from historical owner-entered checkpoints. [YouTube `videos.list`](https://developers.google.com/youtube/v3/docs/videos/list)
 
-### Automatic subtitles on Render
+### Optional OpenAI transcription on Render
 
-Automatic speech and vocal subtitles use the existing OpenAI transcription adapter.
+The default English/Russian recognizer runs on the cloud CPU without a
+provider key. Optionally, automatic speech and vocal subtitles can use the
+OpenAI transcription adapter.
 The Render launcher only enables paid calls with a writable persistent disk
 mounted at `/var/data`. Render Free has ephemeral storage, so a local spend
 ledger on Free would reset on restart. Enable only after budget approval.

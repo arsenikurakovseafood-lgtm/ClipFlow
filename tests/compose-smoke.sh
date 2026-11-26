@@ -53,6 +53,20 @@ job=$(request --fail -H 'Content-Type: video/mp4' -H "Idempotency-Key: $(cat /pr
     python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
 wait_status "/media/$job" 206
 test "$(wc -c < "$scratch/response")" -eq 32
+request --fail "$base/api/session" | python3 -c 'import json,sys; assert json.load(sys.stdin)["automatic_captions"]'
+batch=$(request --fail -H 'Content-Type: application/octet-stream' -H "Idempotency-Key: $(cat /proc/sys/kernel/random/uuid)" \
+    -H 'X-Source-Bytes: 0' -H 'X-Music-Bytes: 0' -H 'X-Subtitle-Bytes: 0' -H 'X-Batch-Sample: 1' \
+    -H 'X-Batch-Mode: visual' -H 'X-Caption-Style: white' -H 'X-Clip-Count: 1' -H 'X-Release-Days: 1' \
+    -H 'X-Content-Goal: Smoke test' -H 'X-Batch-Auto-Captions: 1' -H 'X-Segment-Start: 6' -H 'X-Segment-End: 18' \
+    -d '' "$base/api/batches" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+clip=$(python3 -c 'import sys,uuid; print(uuid.uuid5(uuid.UUID(sys.argv[1]), "1").hex)' "$batch")
+for _ in {1..60}; do
+    status=$(request -o "$scratch/response" -w '%{http_code}' -r 0-31 "$base/media/$clip")
+    if [[ "$status" == 206 ]]; then break; fi
+    sleep 1
+done
+test "$status" = 206
+compose exec -T worker python -c 'import json,sqlite3,sys; db=sqlite3.connect("/var/lib/clipflow/jobs.sqlite3"); spec=json.loads(db.execute("SELECT spec FROM jobs WHERE id=?", (sys.argv[1],)).fetchone()[0]); assert 6 <= spec["start"] < spec["end"] <= 18 and spec["cues"]' "$clip"
 compose restart web worker
 wait_status "/media/$job" 206
-echo 'Passed: gateway auth, video upload, FFmpeg worker, byte-range playback, and restart persistence.'
+echo 'Passed: gateway auth, upload, FFmpeg playback, server-side speech recognition, bounded time range, and restart persistence.'

@@ -8,44 +8,63 @@ let submittingBatch = false
 const sourceKind = batchForm.elements.namedItem('sourceKind')
 function updateSourceKind() {
   const converter = sourceKind.value === 'youtube'
+  const sample = sourceKind.value === 'sample'
   const link = converter || sourceKind.value === 'link'
   const file = sourceKind.value === 'file'
   document.getElementById('batch-source-file').hidden = !file
   document.getElementById('batch-source-url').hidden = !link
-  document.getElementById('batch-sample-note').hidden = sourceKind.value !== 'sample'
+  document.getElementById('batch-sample-note').hidden = !sample
   batchForm.elements.namedItem('source').required = file
   batchForm.elements.namedItem('sourceUrl').required = link
-  document.getElementById('batch-segment').hidden = !converter
+  const range = document.getElementById('batch-segment')
+  if (converter) range.open = true
+  document.getElementById('source-permission').hidden = !converter
   for (const field of ['segmentStart', 'segmentEnd', 'authorized']) {
     batchForm.elements.namedItem(field).required = converter
   }
   document.getElementById('youtube-source-help').textContent = converter
     ? 'Paste the link to a YouTube video or Short.' : 'Paste the direct HTTPS link to an R2 video file.'
-  document.getElementById('converter-availability').textContent = batchSession?.youtube_converter ? ''
-    : 'The converter is off on this deployment. You can upload a pre-cut video or use a direct R2 file link.'
-  batchForm.querySelector('button[type=submit]').disabled = submittingBatch || (converter && !batchSession?.youtube_converter)
+  const blocked = converter && !batchSession?.youtube_converter
+  document.getElementById('converter-availability').hidden = !blocked
+  batchForm.querySelector('button[type=submit]').hidden = blocked
+  batchForm.querySelector('button[type=submit]').disabled = submittingBatch || blocked
   if (batchSession) updateBatchMode(batchSession)
 }
 sourceKind.addEventListener('change', updateSourceKind)
+document.getElementById('try-segment').addEventListener('click', () => {
+  sourceKind.value = 'sample'
+  batchMode.value = 'visual'
+  batchForm.elements.segmentStart.value = '0:06'
+  batchForm.elements.segmentEnd.value = '0:18'
+  batchForm.elements.count.value = '2'
+  if (!batchForm.elements.goal.value.trim()) batchForm.elements.goal.value = 'Show how to create and review clips'
+  batchKey = undefined
+  updateSourceKind()
+  batchForm.querySelector('button[type=submit]').focus()
+})
 
 function updateBatchMode(session) {
   const music = batchMode.value === 'music'
   const speech = batchMode.value === 'speech'
   const sample = sourceKind.value === 'sample'
   const automatic = batchForm.elements.namedItem('automaticCaptions')
-  automatic.disabled = !session.automatic_captions || sample
-  automatic.checked = !automatic.disabled
-  document.getElementById('caption-availability').textContent = sample
-    ? (music ? 'The sample soundtrack has no vocals.' : 'The sample includes authored subtitles.') : automatic.disabled
-    ? 'Automatic subtitles are paused here. Uploading a subtitle file is optional for Quick clips and Music promos.'
-    : music ? 'Generate subtitles from the uploaded track’s vocals.' : 'Generate subtitles from speech in the source video.'
+  automatic.disabled = !session.automatic_captions
+  automatic.checked = !automatic.disabled && !music
+  document.getElementById('caption-controls').hidden = automatic.disabled
+  document.getElementById('caption-language').hidden = automatic.disabled || !automatic.checked || sample || session.paid_captions
+  document.getElementById('caption-availability').textContent = speech && automatic.disabled && !sample
+    ? 'Spoken highlights need captions. Add them in Advanced settings.' : ''
   batchTrack.hidden = !music
   const original = batchMode.value === 'original'
   batchForm.elements.namedItem('hook').required = original
   batchForm.elements.namedItem('cta').required = original
-  if (original) document.getElementById('creative-options').open = true
+  if (original) {
+    document.getElementById('studio-advanced').open = true
+    document.getElementById('creative-options').open = true
+  }
   batchForm.elements.namedItem('music').required = music && !sample
   batchForm.elements.namedItem('captions').required = speech && !session.automatic_captions && !sample
+  if (batchForm.elements.namedItem('captions').required) document.getElementById('studio-advanced').open = true
   document.getElementById('batch-caption-help').textContent = !speech || sample
     ? 'Optional. Use an SRT or WebVTT file aligned to the source.'
     : session.automatic_captions
@@ -65,6 +84,9 @@ capabilities.then(session => {
   batchForm.hidden = false
   updateSourceKind()
   batchMode.addEventListener('change', () => updateBatchMode(session))
+  batchForm.elements.automaticCaptions.addEventListener('change', event => {
+    document.getElementById('caption-language').hidden = !event.target.checked || sourceKind.value === 'sample' || session.paid_captions
+  })
 })
 function openCampaignStudio(campaign) {
   if (!campaign) return
@@ -90,14 +112,16 @@ batchForm.addEventListener('submit', async event => {
   const source = sample || sourceUrl ? null : values.get('source')
   const music = values.get('mode') === 'music' ? values.get('music') : null
   const captions = values.get('captions')
-  const button = batchForm.querySelector('button')
+  const button = batchForm.querySelector('button[type=submit]')
   batchStatus.textContent = 'Staging source and preparing the batch…'
   submittingBatch = true
   button.disabled = true
+  button.setAttribute('aria-busy', 'true')
+  button.textContent = 'Submitting…'
   batchKey ||= crypto.randomUUID()
   try {
     const bundle = new Blob([...(source ? [source] : []), ...(music ? [music] : []), captions])
-    const response = await fetch('/api/batches', {
+    const response = await studioFetch('/api/batches', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/octet-stream',
@@ -109,8 +133,9 @@ batchForm.addEventListener('submit', async event => {
         'X-Content-Goal': encodeURIComponent(values.get('goal')),
         'X-Batch-Reference': encodeURIComponent(values.get('reference')),
         'X-Batch-Source-URL': encodeURIComponent(sourceUrl),
-        'X-Segment-Start': converter ? values.get('segmentStart').trim() : '',
-        'X-Segment-End': converter ? values.get('segmentEnd').trim() : '',
+        'X-Segment-Start': values.get('segmentStart').trim(),
+        'X-Segment-End': values.get('segmentEnd').trim(),
+        'X-Caption-Language': sample ? 'en' : values.get('captionLanguage'),
         'X-Source-Authorized': converter && values.has('authorized') ? '1' : '0',
         'X-Batch-Sample': sample ? '1' : '0',
         'X-Batch-Mode': values.get('mode'),
@@ -123,7 +148,8 @@ batchForm.addEventListener('submit', async event => {
         'X-Caption-Style': values.get('style'),
         'X-Batch-Auto-Captions': values.has('automaticCaptions') && !captions.size ? '1' : '0'
       },
-      body: batchSession.direct_upload ? null : bundle
+      body: batchSession.direct_upload ? null : bundle,
+      signal: AbortSignal.timeout(45000)
     })
     const result = await response.json()
     if (!response.ok) throw new Error(result.error)
@@ -133,9 +159,12 @@ batchForm.addEventListener('submit', async event => {
       : 'Batch queued. Open Content to track rendering.'
     await refresh()
   } catch (error) {
-    batchStatus.textContent = error.message || 'Batch upload failed.'
+    batchStatus.textContent = error.name === 'TimeoutError' ? 'The server did not confirm the upload. Check Content before trying again.'
+      : error.message || 'Batch upload failed.'
   } finally {
     submittingBatch = false
+    button.removeAttribute('aria-busy')
+    button.textContent = 'Create clips'
     button.disabled = sourceKind.value === 'youtube' && !batchSession?.youtube_converter
   }
 })

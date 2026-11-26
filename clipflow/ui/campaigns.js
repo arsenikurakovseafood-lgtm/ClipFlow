@@ -350,7 +350,7 @@ agent.addEventListener('submit', async event => {
   }
 })
 capabilities.then(session => {
-  document.getElementById('campaign-caption-budget').hidden = !session?.automatic_captions
+  document.getElementById('campaign-caption-budget').hidden = !session?.paid_captions
   if (session?.youtube_metrics) {
     youtubeMetricsEnabled = true
     document.getElementById('youtube-analytics-status').textContent = 'Public YouTube statistics available for recorded posts.'

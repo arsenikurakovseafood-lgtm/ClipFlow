@@ -19,7 +19,7 @@ from clipflow.queue import Limit, Queue
 from clipflow.r2 import BUNDLE_MIME, MEDIA_TYPES, PrivateMedia
 from clipflow.render import MAX_OUTPUT_BYTES
 from clipflow.youtube import SOURCE_LIMIT, youtube_url
-from clipflow.transcription import enabled as transcription_enabled
+from clipflow.transcription import SPEECH_MODELS, enabled as transcription_enabled, monthly_budget
 
 MAX_UPLOAD = 25 * 1024 * 1024
 QUOTA = 250 * 1024 * 1024
@@ -109,6 +109,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
         if url.path == '/api/session':
             return self.reply(200, {'sign_out': self.server.auth is not None,
                                     'automatic_captions': self.server.transcription_enabled,
+                                    'paid_captions': monthly_budget() > 0,
                                     'direct_upload': self.server.media is not None,
                                     'ai_planner': planner_budget() > 0,
                                     'youtube_metrics': bool(os.environ.get('CLIPFLOW_YOUTUBE_DATA_API_KEY')),
@@ -369,14 +370,21 @@ class OwnerAPI(BaseHTTPRequestHandler):
             source_url = unquote(self.headers.get('X-Batch-Source-URL', '')).strip()
             sample = self.headers.get('X-Batch-Sample') == '1'
             trim = None
+            segment_start = self.headers.get('X-Segment-Start', '')
+            segment_end = self.headers.get('X-Segment-End', '')
+            if segment_start or segment_end:
+                try:
+                    trim = segment_range(segment_start, segment_end)
+                except ValueError as error:
+                    return self.reply(400, {'error': str(error)})
+            youtube = False
             if source_url:
                 canonical = youtube_url(source_url)
                 if canonical:
                     source_url = canonical
-                    try:
-                        trim = segment_range(self.headers.get('X-Segment-Start', ''), self.headers.get('X-Segment-End', ''))
-                    except ValueError as error:
-                        return self.reply(400, {'error': str(error)})
+                    youtube = True
+                    if not trim:
+                        return self.reply(400, {'error': 'Enter the start and end timecodes for the YouTube segment.'})
                     if self.headers.get('X-Source-Authorized') != '1':
                         return self.reply(400, {'error': 'Confirm permission to process and edit the source video.'})
                     if not monthly_limit():
@@ -398,6 +406,9 @@ class OwnerAPI(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             return self.reply(400, {'error': 'Check the source, goal, clip count and release window. Use a public YouTube link or a direct Cloudflare R2 file link.'})
         automatic = self.headers.get('X-Batch-Auto-Captions') == '1' or (mode == 'speech' and not captions and not sample)
+        caption_language = self.headers.get('X-Caption-Language', 'en')
+        if caption_language not in SPEECH_MODELS:
+            return self.reply(400, {'error': 'Choose English or Russian for captions.'})
         if automatic and not self.server.transcription_enabled:
             return self.reply(409, {'error': 'Automatic captions are off for this deployment. Upload timed subtitles or enable OpenAI transcription in Render.'})
         if mode == 'speech' and not (captions or automatic or sample):
@@ -423,7 +434,8 @@ class OwnerAPI(BaseHTTPRequestHandler):
                            'count': count, 'days': days, 'source_seconds': 120, 'automatic_captions': automatic,
                            'clip_seconds': 10, 'size': size if private else 0, 'reference': reference, 'source_url': source_url,
                            'campaign_id': campaign_id, 'creative': creative, 'hook': hook, 'cta': cta,
-                           'sample': sample, 'trim': trim}
+                           'sample': sample, 'trim': trim, 'trim_locally': bool(trim and not youtube),
+                           'caption_language': caption_language}
         if private:
             data.update(storage='r2', mime=BUNDLE_MIME, parts=parts)
         spec = json.dumps(data)

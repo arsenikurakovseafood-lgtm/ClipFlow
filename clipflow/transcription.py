@@ -2,6 +2,8 @@
 import json
 import math
 import os
+import subprocess
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.request import Request, build_opener
@@ -15,6 +17,7 @@ MODEL = 'gpt-transcribe'
 API_URL = 'https://api.openai.com/v1/audio/transcriptions'
 # Quota estimate reserves a full minute per window at the published USD rate.
 MICRO_USD_PER_WINDOW = 4500
+SPEECH_MODELS = {'en': 'vosk-model-small-en-us-0.15', 'ru': 'vosk-model-small-ru-0.22'}
 
 
 class TranscriptionUnavailable(ValueError):
@@ -28,7 +31,50 @@ def monthly_budget():
 
 
 def enabled():
-    return monthly_budget() > 0
+    return monthly_budget() > 0 or CloudSpeech.available()
+
+
+class CloudSpeech:
+    @staticmethod
+    def model_root():
+        return Path(os.environ.get('CLIPFLOW_SPEECH_MODEL_DIR', '/opt/clipflow-speech'))
+
+    @classmethod
+    def available(cls):
+        return all((cls.model_root() / name / 'am' / 'final.mdl').is_file()
+                   for name in SPEECH_MODELS.values())
+
+    def captions(self, queue, job, source, start, end):
+        language = json.loads(job['spec']).get('caption_language', 'en')
+        model = self.model_root() / SPEECH_MODELS[language]
+        with TemporaryDirectory(prefix='caption-', dir=source.parent) as directory:
+            audio = Path(directory) / 'audio.wav'
+            try:
+                run('ffmpeg', '-nostdin', '-v', 'error', *LOCAL_PROTOCOLS,
+                    '-ss', str(start), '-i', str(source), '-t', str(end - start),
+                    '-map', '0:a:0', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le',
+                    str(audio), timeout=30)
+                words = json.loads(run(sys.executable, '-m', 'clipflow.speech_cli',
+                                       str(model), str(audio), timeout=150))
+            except (subprocess.SubprocessError, OSError, ValueError) as error:
+                raise TranscriptionUnavailable('Could not transcribe this audio. Check that it contains clear speech.') from error
+        cues = []
+        group = []
+        for word in words:
+            if group and (len(group) == 7 or word['end'] - group[0]['start'] > 3.5
+                          or word['start'] - group[-1]['end'] > 0.8):
+                cues.append(self.cue(group, start, end, sentence=word['start'] - group[-1]['end'] > 0.55))
+                group = []
+            if start + word['start'] < end:
+                group.append(word)
+        if group:
+            cues.append(self.cue(group, start, end, sentence=True))
+        return cues
+
+    @staticmethod
+    def cue(words, offset, end, sentence):
+        return Cue(offset + words[0]['start'], min(end, offset + words[-1]['end']),
+                   ' '.join(word['word'] for word in words) + ('.' if sentence else ''))
 
 
 class Transcriber:

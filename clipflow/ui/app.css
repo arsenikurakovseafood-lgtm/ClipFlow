@@ -31,7 +31,8 @@ input[type=file]{padding:6px;max-width:100%}
 button{font:inherit;cursor:pointer}
 form button{justify-self:start;border:0;border-radius:4px;background:linear-gradient(112deg,#b80d58,#a81c40 52%,#324ac7);color:#fff;font-weight:700;padding:10px 15px}
 form button span{margin-left:12px}
-button:disabled{opacity:.6;cursor:wait}
+button:disabled{opacity:.6;cursor:not-allowed}
+button[aria-busy=true]{cursor:progress}
 #status{margin:0;min-height:1.55em}
 #preview{display:grid;justify-items:start;gap:6px}
 #preview[hidden]{display:none}
@@ -114,5 +115,15 @@ textarea{min-height:100px;resize:vertical}
 #caption-availability{margin:0;color:var(--muted);font-size:.875rem}
 
 #youtube-source-help{display:block;margin-top:2px}
-#batch-segment:not([hidden]){display:grid;gap:8px}
-#converter-availability{margin:0}
+#batch-form{max-width:720px;gap:16px}
+.studio-source{display:grid;gap:12px;padding:16px;border:1px solid var(--edge);border-radius:8px;background:var(--surface)}
+.studio-source p,.studio-notice p{margin:0}
+#batch-segment[open] .range{margin:8px 0}
+.studio-actions,.studio-captions{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.studio-captions>label:last-child{display:flex;align-items:center;gap:8px}
+#caption-language[hidden]{display:none}
+.studio-captions select{width:auto}
+.studio-notice{padding:11px 12px;border-left:2px solid var(--accent)}
+.studio-notice button{margin-top:8px;padding:6px 10px}
+#studio-advanced{border-top:1px solid var(--edge);padding-top:12px}
+#batch-status:empty,#caption-availability:empty{display:none}

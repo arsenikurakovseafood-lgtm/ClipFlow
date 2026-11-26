@@ -76,29 +76,44 @@
 <p>Pick a video and choose what you want ClipFlow to make. You can review every result before publishing.</p>
 <p id="batch-unavailable" hidden>Series editing is unavailable with the current storage settings. <a href="#trim">Open manual trim</a>.</p>
 <form id="batch-form" hidden>
-<label>What are you making?<select name="mode"><option value="visual">Quick clips · use the video as it is</option><option value="speech">Podcast highlights · choose by what is said</option><option value="music">Music promos · use your song as the audio</option><option value="original">Original promo · add an opening hook and a call to action</option></select></label>
-<label>Campaign<select name="campaign"><option value="">Standalone clips</option></select></label>
-<label>What should the clips achieve?<textarea name="goal" maxlength="500" placeholder="Find motivational moments about persistence for people building their first app" required></textarea></label>
-<label>Campaign reference (optional)<input name="reference" type="url" maxlength="400" placeholder="https://…"><small>Optional track or campaign reference. Choose your actual video source below.</small></label>
+<div class="studio-source">
 <label>Where is your video?<select name="sourceKind"><option value="file">Upload a video file</option><option value="youtube">Convert a YouTube segment to MP4</option><option value="link">Use a Cloudflare R2 file link</option><option value="sample">Use the ClipFlow walkthrough sample</option></select></label>
 <label id="batch-source-url" hidden>Video file link<input name="sourceUrl" type="url" maxlength="2400"><small id="youtube-source-help"></small></label>
-<div id="batch-segment" hidden>
+<label id="batch-source-file">Upload video<input name="source" type="file" accept=".mp4,.mov,.webm" required><small>Authorized MP4, MOV or WebM · up to 8 MiB and 2 minutes</small></label>
+<p id="batch-sample-note" hidden>Try the 24-second ClipFlow walkthrough without uploading a file.</p>
+<details id="batch-segment">
+<summary>Choose a time range</summary>
 <div class="range">
 <label>From <input name="segmentStart" maxlength="10" placeholder="12:00"></label>
 <label>To <input name="segmentEnd" maxlength="10" placeholder="13:00"></label>
 </div>
-<small>Enter seconds, MM:SS or HH:MM:SS. Choose 3–120 seconds per batch.</small>
-<label class="check-option"><input name="authorized" type="checkbox"> I have permission to process and edit this video.</label>
-<p id="converter-availability" role="status"></p>
+<small>Use seconds, MM:SS or HH:MM:SS. Select 3–120 seconds.</small>
+</details>
+<label id="source-permission" class="check-option" hidden><input name="authorized" type="checkbox"> I have permission to process and edit this video.</label>
+<div id="converter-availability" class="studio-notice" hidden>
+<p>YouTube conversion needs a connected account. Try the time-range workflow with the sample.</p>
+<button type="button" id="try-segment">Try sample range</button>
 </div>
-<label id="batch-source-file">Upload video<input name="source" type="file" accept=".mp4,.mov,.webm" required><small>Authorized MP4, MOV or WebM · up to 8 MiB and 2 minutes</small></label>
-<p id="batch-sample-note" hidden>The sample uses ClipFlow’s own footage with a prepared transcript or sample track. Choose up to four clips to test without uploading files.</p>
-<label id="batch-track" hidden>Track audio file<input name="music" type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac"><small>Upload your authorized track file. It replaces audio from the footage.</small></label>
-<label class="check-option"><input type="checkbox" name="automaticCaptions" disabled>Generate subtitles from audio</label>
-<p id="caption-availability" role="status"></p>
-<label>Subtitle file override (.srt or .vtt) <input name="captions" type="file" accept=".srt,.vtt"><small id="batch-caption-help">Required for spoken highlights in this preview. Use SRT or WebVTT.</small></label>
-<div class="campaign-fields">
+</div>
+<div class="range">
+<label>What are you making?<select name="mode"><option value="visual">Quick clips</option><option value="speech">Podcast highlights</option><option value="music">Music promos</option><option value="original">Original promo</option></select></label>
 <label>Number of clips<input name="count" type="number" min="1" max="10" value="3" required></label>
+</div>
+<label>What should the clips achieve?<textarea name="goal" maxlength="500" placeholder="Find the strongest moments about persistence" required></textarea></label>
+<label id="batch-track" hidden>Track audio file<input name="music" type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac"><small>Upload your authorized track file. It replaces audio from the footage.</small></label>
+<div id="caption-controls" class="studio-captions">
+<label class="check-option"><input type="checkbox" name="automaticCaptions" disabled>Generate subtitles from audio</label>
+<label id="caption-language">Audio language<select name="captionLanguage"><option value="en">English</option><option value="ru">Russian</option></select></label>
+</div>
+<p id="caption-availability" role="status"></p>
+<div class="studio-actions"><button type="submit">Create clips</button><a href="#content">Open Content</a></div>
+<p id="batch-status" role="status"></p>
+<details id="studio-advanced"><summary>Advanced settings</summary>
+<div class="creative-fields">
+<label>Campaign<select name="campaign"><option value="">Standalone clips</option></select></label>
+<label>Campaign reference (optional)<input name="reference" type="url" maxlength="400" placeholder="https://…"></label>
+<label>Subtitle file override (.srt or .vtt) <input name="captions" type="file" accept=".srt,.vtt"><small id="batch-caption-help">Required for spoken highlights in this preview. Use SRT or WebVTT.</small></label>
+<div class="range">
 <label>Release window (days)<input name="days" type="number" min="1" max="30" value="3" required></label>
 <label>Caption color<select name="style"><option value="white">White</option><option value="pink">Hot pink</option><option value="red">Red</option><option value="blue">Sky blue</option></select></label>
 </div>
@@ -108,10 +123,8 @@
 <label>Opening text<input name="hook" maxlength="100" placeholder="What catches attention in the first two seconds?"></label>
 <label>Call to action<input name="cta" maxlength="100" placeholder="What should viewers do next?"></label>
 </div></details>
-<small>Clips can be up to 10 seconds. When they are ready, open Content to play them.</small>
-<button type="submit">Create clips</button>
-<a href="#content">Open Content</a>
-<p id="batch-status" role="status"></p>
+</div>
+</details>
 </form>
 <p><a href="#trim">Trim a single clip manually</a></p>
 </section>

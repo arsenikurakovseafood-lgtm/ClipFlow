@@ -113,10 +113,11 @@ def ended(text):
     return text.rstrip('”’"»\')]').endswith(('.', '!', '?', '…'))
 
 
-def scene_windows(source, duration, count, limit):
+def scene_windows(source, duration, count, limit, offset=0):
     result = subprocess.run([
         'ffmpeg', '-nostdin', '-hide_banner', '-v', 'info', '-filter_threads', '1',
-        *LOCAL_PROTOCOLS, '-threads', '1', '-i', str(source), '-an', '-sn', '-dn',
+        *LOCAL_PROTOCOLS, '-threads', '1', '-ss', str(offset), '-i', str(source),
+        '-t', str(duration), '-an', '-sn', '-dn',
         '-vf', "fps=4,scale=256:-2,select='gt(scene,0.22)',showinfo", '-f', 'null', '-',
     ], capture_output=True, text=True, timeout=90, check=True, stdin=subprocess.DEVNULL)
     count = min(count, int(duration / 3))
@@ -174,7 +175,7 @@ def stage_batch(root, queue, job, data, transcriber=None, converter=None):
     folder = root / job['id']
     source = folder / 'source'
     if data.get('sample'):
-        stage_sample(folder, data['mode'])
+        stage_sample(folder, data['mode'], authored_captions=not data.get('automatic_captions'))
     if data.get('source_url') and not source.exists():
         if youtube_url(data['source_url']):
             if not data.get('trim'):
@@ -190,7 +191,10 @@ def stage_batch(root, queue, job, data, transcriber=None, converter=None):
     info = probe(source)
     duration = float(info['format']['duration'])
     window = data.get('trim')
-    if window and abs(duration - (window['end'] - window['start'])) > 0.5:
+    offset = window['start'] if window and data.get('trim_locally') else 0
+    if window and data.get('trim_locally') and window['end'] > duration:
+        raise BatchError('The end time is past the end of the source video.')
+    if window and not data.get('trim_locally') and abs(duration - (window['end'] - window['start'])) > 0.5:
         raise BatchError(CONVERSION_FAILED)
     if window:
         duration = min(duration, window['end'] - window['start'])
@@ -202,17 +206,21 @@ def stage_batch(root, queue, job, data, transcriber=None, converter=None):
     captions = folder / 'captions'
     cues = parse_captions(captions.read_text(encoding='utf-8-sig'), max_end=43200 if window else 1800) if captions.exists() else []
     if window and cues:
-        offset = window['start']
-        cues = [Cue(max(0, cue.start - offset), min(duration, cue.end - offset), cue.text)
-                for cue in cues if cue.end > offset and cue.start < offset + duration]
+        anchor = window['start']
+        cues = [Cue(max(0, cue.start - anchor), min(duration, cue.end - anchor), cue.text)
+                for cue in cues if cue.end > anchor and cue.start < anchor + duration]
         if not cues:
             raise BatchError('The subtitles do not overlap the selected timecode range.')
     auto = data.get('automatic_captions') and not cues
+    has_audio = any(stream['codec_type'] == 'audio' for stream in info['streams'])
+    if auto and data['mode'] != 'music' and has_audio:
+        if not transcriber:
+            raise BatchError('Automatic captions are unavailable.')
+        timed = transcriber.captions(queue, job, source, offset, offset + duration)
+        cues = [Cue(cue.start - offset, cue.end - offset, cue.text) for cue in timed]
     if data['mode'] == 'speech':
         if not cues:
-            if not transcriber:
-                raise BatchError('Attach an SRT or VTT file for spoken highlights.')
-            cues = transcriber.captions(queue, job, source, 0, duration)
+            raise BatchError('No clear speech was found. Check the selected language or use Quick clips.')
         windows = speech_windows(cues, duration, data['goal'], data['count'], data['clip_seconds'])
     elif data['mode'] == 'music':
         track = probe(folder / 'music')
@@ -220,9 +228,9 @@ def stage_batch(root, queue, job, data, transcriber=None, converter=None):
         if not 3 <= track_seconds <= 1800 or not any(stream['codec_type'] == 'audio' for stream in track['streams']):
             raise BatchError('Upload a playable track of at least three seconds.')
         limit = min(data['clip_seconds'], track_seconds) if auto else data['clip_seconds']
-        windows = scene_windows(source, duration, data['count'], limit)
+        windows = scene_windows(source, duration, data['count'], limit, offset)
     else:
-        windows = scene_windows(source, duration, data['count'], data['clip_seconds'])
+        windows = scene_windows(source, duration, data['count'], data['clip_seconds'], offset)
     if not windows:
         raise BatchError('No complete highlights fit the requested duration. Check the source and subtitles.')
 
@@ -235,21 +243,23 @@ def stage_batch(root, queue, job, data, transcriber=None, converter=None):
         overlays = []
         overlay_seconds = min(2.5, (end - start) / 2)
         if data.get('hook'):
-            overlays.append(asdict(Cue(start, start + overlay_seconds, data['hook'])))
+            overlays.append(asdict(Cue(offset + start, offset + start + overlay_seconds, data['hook'])))
         if data.get('cta'):
-            overlays.append(asdict(Cue(end - overlay_seconds, end, data['cta'])))
-        clip = {'batch_parent': job['id'], 'start': start, 'end': end,
+            overlays.append(asdict(Cue(offset + end - overlay_seconds, offset + end, data['cta'])))
+        clip = {'batch_parent': job['id'], 'start': offset + start, 'end': offset + end,
                 'campaign_id': data.get('campaign_id'), 'creative': data.get('creative', 'standard'),
                 'overlays': overlays,
                 'caption_style': data['caption_style'],
                 'release_day': 1 + ((number - 1) * data['days'] // len(windows)),
                 'release_days': data['days'],
-                'cues': [asdict(cue) for cue in cues if cue.end > start and cue.start < end]}
+                'cues': [asdict(Cue(offset + cue.start, offset + cue.end, cue.text))
+                         for cue in cues if cue.end > start and cue.start < end]}
         if data['mode'] == 'music':
             clip['music_start'] = (number - 1) * 6 % max(1, track_seconds - (end - start))
             clip['music_start'] = min(clip['music_start'], max(0, track_seconds - (end - start)))
-        if auto and data['mode'] != 'speech':
+        if auto and data['mode'] == 'music':
             clip['automatic_captions'] = True
+            clip['caption_language'] = data.get('caption_language', 'en')
         if data.get('storage') == 'r2':
             clip['storage'] = 'r2'
         children.append((child_id, title, clip))

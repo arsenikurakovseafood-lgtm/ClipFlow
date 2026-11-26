@@ -5,6 +5,12 @@ let displayedJobs = ''
 let selected
 let requestKey
 
+async function studioFetch(url, options) {
+  const response = await fetch(url, options)
+  if (response.status === 401) window.location.replace('/signin' + window.location.hash)
+  return response
+}
+
 async function uploadPrivateMedia(result, body) {
   if (!result.url) return
   const upload = await fetch(result.url, {method: 'PUT', headers: result.headers, body, redirect: 'error'})
@@ -35,7 +41,7 @@ function sourceRecovery(job) {
     <small role="status"></small>`
   const button = form.querySelector('button')
   const status = form.querySelector('[role=status]')
-  if (job.trim_end !== null) {
+  if (job.trim_end !== null && !job.trim_locally) {
     form.querySelector('small').textContent = 'Use an MP4 already cut to the selected timecodes. Your track and settings are saved.'
   }
   const video = form.elements.video
@@ -97,7 +103,7 @@ function clipReview(job) {
 
 async function refresh() {
   try {
-    const response = await fetch('/api/jobs')
+    const response = await studioFetch('/api/jobs')
     if (!response.ok) throw new Error()
     const jobs = await response.json()
     byId('library-status').textContent = jobs.length ? '' : 'Your rendered clips will appear here.'
@@ -207,7 +213,7 @@ refresh()
 setInterval(refresh, 1600)
 
 const signOut = document.getElementById('sign-out')
-const capabilities = fetch('/api/session').then(async response => {
+const capabilities = studioFetch('/api/session').then(async response => {
   if (!response.ok) return null
   const session = await response.json()
   document.getElementById('upload-limits').textContent =
