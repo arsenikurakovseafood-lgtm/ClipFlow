@@ -1,5 +1,14 @@
 # Build status
 
+## Free-only YouTube setup on Render
+
+The private Render Free preview can use a VidFetch key without attaching a
+paid disk. The configuration requires an explicit free-only flag. The worker
+checks the provider's Free plan, remaining allowance and unfunded balance
+before posting a time-range conversion. This mode is verified with provider
+fixtures. An authenticated live conversion still requires a configured key
+and a Free account whose API permits trim.
+
 ## Studio simplification and automatic captions
 
 Studio puts the source, goal, clip count and subtitle controls first. A

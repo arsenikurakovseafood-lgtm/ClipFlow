@@ -162,6 +162,15 @@ Uploads and direct R2 files also support an optional range for editing.
 
 #### Configure segment conversion on an approved cloud deployment
 
+For the private Render Free preview, create an API key in a VidFetch Free
+account with no payment balance or prepaid packs. In the service’s
+**Environment** settings, set `CLIPFLOW_VIDFETCH_API_KEY` and
+`CLIPFLOW_VIDFETCH_FREE_ONLY=true`. The worker verifies the plan, remaining
+allowance and absence of funded usage before submitting a conversion. The
+preview defaults to five local attempts. That counter can reset with Render’s
+ephemeral filesystem, so the provider’s free allowance is the hard ceiling.
+The free-plan trim entitlement still requires an authenticated live test.
+
 Use a VidFetch account approved for the workflow and verify trim access and a
 hard spending cap with the provider before enabling it. The provider's public
 pricing page describes a free API plan and lists trim specifically under
@@ -170,8 +179,9 @@ On a durable cloud deployment, store the API key as
 `CLIPFLOW_VIDFETCH_API_KEY`, configure the exact HTTPS hostname used for this
 account's signed delivery URLs in `CLIPFLOW_VIDFETCH_DELIVERY_ORIGIN`, set a
 positive `CLIPFLOW_VIDFETCH_MONTHLY_JOBS`, and explicitly enable
-`CLIPFLOW_VIDFETCH_ENABLED=true`. The Render launcher requires a writable
-mounted persistent disk for the reservation ledger. The worker accepts at most
+`CLIPFLOW_VIDFETCH_ENABLED=true`. Outside free-only mode, the Render
+launcher requires a writable mounted persistent disk for the reservation
+ledger. The worker accepts at most
 8 MiB per delivered segment, sends the key only to the VidFetch API and records
 one reservation per submission. Leave provider overages off. A live API run is
 required before offering the feature to customers.

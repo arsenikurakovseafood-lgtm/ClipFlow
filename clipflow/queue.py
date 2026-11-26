@@ -9,11 +9,11 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 
 from clipflow.batch import R2_IMPORT_FAILED
-from clipflow.converter import CONVERSION_FAILED
+from clipflow.converter import CONVERSION_FAILED, FREE_QUOTA_UNAVAILABLE
 from clipflow.youtube import ACCESS_REFUSED
 
 REPLACEABLE_BATCH = """state='failed' AND source_removed=0 AND finished_at>?
-    AND json_extract(spec,'$.batch')=1 AND error IN (?,?,?)
+    AND json_extract(spec,'$.batch')=1 AND error IN (?,?,?,?)
     AND (json_extract(spec,'$.campaign_id') IS NULL OR EXISTS
         (SELECT 1 FROM campaigns c WHERE c.id=json_extract(jobs.spec,'$.campaign_id') AND c.state<>'stopped'))"""
 
@@ -23,7 +23,7 @@ def source_retention_seconds():
 
 
 def replacement_window():
-    return time.time() - source_retention_seconds(), ACCESS_REFUSED, R2_IMPORT_FAILED, CONVERSION_FAILED
+    return time.time() - source_retention_seconds(), ACCESS_REFUSED, R2_IMPORT_FAILED, CONVERSION_FAILED, FREE_QUOTA_UNAVAILABLE
 
 
 def workloads_paused(db):

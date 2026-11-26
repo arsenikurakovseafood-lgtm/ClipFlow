@@ -3,9 +3,9 @@ import tempfile
 import unittest
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from clipflow.converter import API, CONVERSION_FAILED, ConversionError, VidFetch, segment_range
+from clipflow.converter import API, CONVERSION_FAILED, USAGE_API, ConversionError, VidFetch, segment_range
 from clipflow.queue import Queue
 from clipflow.render import probe, run
 from clipflow.worker import work
@@ -43,18 +43,22 @@ class ConverterTests(unittest.TestCase):
             origin = 'https://delivery.example.com'
             remote_id = 'dl_converter_fixture'
             opener = Mock()
+            usage = {'plan': 'free', 'remaining_gb': 0.8, 'payg_balance_cents': 0,
+                     'pack_remaining_gb': 0, 'active_jobs': 0}
             opener.open.side_effect = [
+                BytesIO(json.dumps(usage).encode()),
                 BytesIO(json.dumps({'id': remote_id}).encode()),
                 BytesIO(json.dumps({'id': remote_id, 'status': 'completed', 'trim': window,
                                     'size_bytes': len(media), 'download_url': origin + '/segment.mp4'}).encode()),
                 download,
                 BytesIO(),
             ]
-            converter = VidFetch('fixture-key', origin, limit=1, opener=opener)
+            converter = VidFetch('fixture-key', origin, limit=1, opener=opener, free_only=True)
             queue.uploaded(batch_id)
             work(root, queue, queue.claim(), converter=converter)
             self.assertEqual(queue.get(batch_id)['state'], 'prepared')
-            create, status, fetch, cleanup = [call.args[0] for call in opener.open.call_args_list]
+            preflight, create, status, fetch, cleanup = [call.args[0] for call in opener.open.call_args_list]
+            self.assertEqual((preflight.get_method(), preflight.full_url), ('GET', USAGE_API))
             self.assertEqual((create.get_method(), create.full_url), ('POST', API))
             self.assertEqual(json.loads(create.data), {'url': url, 'format': '360p', 'trim': window, 'destination': 'url'})
             self.assertEqual((status.get_method(), status.full_url), ('GET', API + '/' + remote_id))
@@ -92,3 +96,33 @@ class ConverterTests(unittest.TestCase):
             opener.open.assert_not_called()
             self.assertFalse((root / 'source').exists())
             self.assertIn('selected segment', CONVERSION_FAILED)
+
+    def test_free_mode_never_submits_on_funded_or_unconfirmed_accounts(self):
+        quota = {'plan': 'free', 'remaining_gb': 0.8, 'payg_balance_cents': 0,
+                 'pack_remaining_gb': 0, 'active_jobs': 0}
+        for unsafe in [{'plan': 'starter'}, {'remaining_gb': 0.01}, {'payg_balance_cents': 1},
+                       {'pack_remaining_gb': 0.1}, {'active_jobs': 1}]:
+            with self.subTest(unsafe=unsafe):
+                opener = Mock()
+                opener.open.return_value = BytesIO(json.dumps(quota | unsafe).encode())
+                queue = Mock()
+                queue.reserve_conversion.return_value = (None, True)
+                adapter = VidFetch('fixture-key', '', 1, opener, free_only=True)
+                with self.assertRaisesRegex(ConversionError, 'free quota'):
+                    adapter.stage(queue, {'id': 'sample'}, 'https://youtu.be/abcdefghijk',
+                                  {'start': 0, 'end': 30}, Path('unused.mp4'))
+                self.assertEqual(opener.open.call_count, 1)
+                self.assertEqual(opener.open.call_args.args[0].full_url, USAGE_API)
+
+    def test_render_free_mode_needs_no_persistent_disk_and_hides_key_from_web(self):
+        from clipflow.render_preview import DATA, service_settings
+
+        environment = {'CLIPFLOW_VIDFETCH_FREE_ONLY': 'true', 'CLIPFLOW_VIDFETCH_API_KEY': 'fixture'}
+        with patch.dict('os.environ', environment, clear=True), \
+                patch('clipflow.render_preview.os.path.ismount', return_value=False):
+            root, web, worker = service_settings()
+        self.assertEqual(root, DATA)
+        self.assertEqual(web['CLIPFLOW_VIDFETCH_MONTHLY_JOBS'], '5')
+        self.assertNotIn('CLIPFLOW_VIDFETCH_API_KEY', web)
+        self.assertEqual(worker['CLIPFLOW_VIDFETCH_API_KEY'], 'fixture')
+        self.assertEqual(worker['CLIPFLOW_VIDFETCH_FREE_ONLY'], 'true')

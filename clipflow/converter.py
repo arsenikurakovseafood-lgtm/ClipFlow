@@ -7,7 +7,7 @@ from subprocess import SubprocessError
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.error import HTTPError
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 from urllib.request import Request, build_opener
 
 from clipflow.auth import NoRedirect
@@ -15,7 +15,9 @@ from clipflow.render import probe
 from clipflow.youtube import SOURCE_LIMIT
 
 API = 'https://api.vidfetch.dev/v1/downloads'
+USAGE_API = 'https://api.vidfetch.dev/v1/usage'
 CONVERSION_FAILED = 'The video converter could not return the selected segment. Try a pre-cut MP4 or an R2 file link.'
+FREE_QUOTA_UNAVAILABLE = 'VidFetch could not confirm available free quota. Check the API key, plan and active downloads.'
 DISABLED = 'YouTube segment conversion is off. Connect an approved VidFetch account or use a pre-cut source.'
 IDENTIFIER = re.compile(r'dl_[a-zA-Z0-9_-]{8,80}')
 MAX_RANGE = 120
@@ -26,9 +28,10 @@ class ConversionError(ValueError):
 
 
 def monthly_limit():
-    if os.environ.get('CLIPFLOW_VIDFETCH_ENABLED') != 'true':
+    free_only = os.environ.get('CLIPFLOW_VIDFETCH_FREE_ONLY') == 'true'
+    if not free_only and os.environ.get('CLIPFLOW_VIDFETCH_ENABLED') != 'true':
         return 0
-    value = os.environ.get('CLIPFLOW_VIDFETCH_MONTHLY_JOBS', '')
+    value = os.environ.get('CLIPFLOW_VIDFETCH_MONTHLY_JOBS') or ('5' if free_only else '')
     return int(value) if value.isascii() and value.isdecimal() and len(value) <= 4 else 0
 
 
@@ -48,34 +51,65 @@ def segment_range(start, end):
 
 
 class VidFetch:
-    def __init__(self, key, delivery_origin, limit, opener=None):
+    def __init__(self, key, delivery_origin, limit, opener=None, *, free_only=False):
         self.key = key
         self.delivery_origin = delivery_origin
         self.limit = limit
+        self.free_only = free_only
         self.opener = opener or build_opener(NoRedirect)
 
     @classmethod
     def configured(cls):
         limit = monthly_limit()
-        key = os.environ.get('CLIPFLOW_VIDFETCH_API_KEY', '')
+        key = os.environ.get('CLIPFLOW_VIDFETCH_API_KEY', '').strip()
         origin = os.environ.get('CLIPFLOW_VIDFETCH_DELIVERY_ORIGIN', '')
-        if not (limit and key and re.fullmatch(r'https://(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]+', origin)):
+        free_only = os.environ.get('CLIPFLOW_VIDFETCH_FREE_ONLY') == 'true'
+        valid_origin = re.fullmatch(r'https://(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]+', origin)
+        if not (limit and key and (valid_origin or (free_only and not origin))):
             return None
-        return cls(key, origin, limit)
+        return cls(key, origin, limit, free_only=free_only)
 
     def api(self, method, remote_id='', data=None):
+        url = API + ('/' + remote_id if remote_id else '')
+        return self._api_request(url, method, data)
+
+    def _api_request(self, url, method, data=None):
         headers = {'Authorization': 'Bearer ' + self.key, 'Accept': 'application/json'}
         if data is not None:
             headers['Content-Type'] = 'application/json'
         payload = json.dumps(data).encode() if data is not None else None
-        request = Request(API + ('/' + remote_id if remote_id else ''), headers=headers, data=payload, method=method)
+        request = Request(url, headers=headers, data=payload, method=method)
         with self.opener.open(request, timeout=8) as response:
             return None if method == 'DELETE' else json.loads(response.read(64 * 1024))
+
+    def verify_free_quota(self):
+        try:
+            usage = self._api_request(USAGE_API, 'GET')
+            available = usage['remaining_gb']
+            if (usage['plan'].casefold() != 'free' or usage['payg_balance_cents'] != 0
+                    or usage['pack_remaining_gb'] != 0 or usage['active_jobs'] != 0
+                    or type(available) not in (int, float) or not 0.05 <= available <= 1):
+                raise ValueError()
+        except (OSError, AttributeError, KeyError, TypeError, ValueError) as error:
+            raise ConversionError(FREE_QUOTA_UNAVAILABLE) from error
+
+    def delivery_allowed(self, parts):
+        origin = f'{parts.scheme}://{parts.netloc}'
+        if self.delivery_origin:
+            return origin == self.delivery_origin
+        if not self.free_only or parts.scheme != 'https':
+            return False
+        if re.fullmatch(r'(?:[a-z0-9-]+\.)*vidfetch\.dev', parts.netloc):
+            return True
+        if re.fullmatch(r'[a-f0-9]{32}\.r2\.cloudflarestorage\.com', parts.netloc):
+            signed = parse_qs(parts.query)
+            return signed.get('X-Amz-Algorithm') == ['AWS4-HMAC-SHA256'] and bool(signed.get('X-Amz-Signature'))
+        return False
 
     def download(self, url, output, size):
         parts = urlsplit(url)
         if (len(url) > 4096 or parts.fragment or any(c.isspace() for c in url)
-                or f'{parts.scheme}://{parts.netloc}' != self.delivery_origin):
+                or not self.delivery_allowed(parts)):
             raise ConversionError(CONVERSION_FAILED)
         deadline = time.monotonic() + 25
         with self.opener.open(Request(url, headers={'Accept': 'video/mp4'}), timeout=8) as response:
@@ -101,6 +135,8 @@ class VidFetch:
         try:
             remote_id, submit = queue.reserve_conversion(job, self.limit)
             if submit:
+                if self.free_only:
+                    self.verify_free_quota()
                 response = self.api('POST', data={'url': url, 'format': '360p', 'trim': window, 'destination': 'url'})
                 returned_id = response['id']
                 if not isinstance(returned_id, str) or not IDENTIFIER.fullmatch(returned_id):
@@ -136,6 +172,8 @@ class VidFetch:
                     break
                 time.sleep(3)
             raise ConversionError(CONVERSION_FAILED)
+        except ConversionError:
+            raise
         except (OSError, KeyError, AttributeError, TypeError, ValueError, SubprocessError) as error:
             raise ConversionError(CONVERSION_FAILED) from error
         finally:
