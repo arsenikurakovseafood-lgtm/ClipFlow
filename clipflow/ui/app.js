@@ -59,10 +59,6 @@ form.addEventListener('submit', async event => {
   const caption = values.get('caption').trim()
   const status = byId('status')
   const button = form.querySelector('button')
-  if (source.size > 25 * 1024 * 1024 || end - start < 1 || end - start > 60) {
-    status.textContent = 'Choose a video up to 25 MiB and a clip between 1 and 60 seconds.'
-    return
-  }
   button.disabled = true
   status.textContent = 'Uploading to cloud storage…'
   requestKey ||= crypto.randomUUID()
@@ -70,6 +66,9 @@ form.addEventListener('submit', async event => {
   try {
     const session = await capabilities
     if (!session) throw new Error('Reload the studio to reconnect.')
+    if (source.size > session.upload_limit_mib * 1024 * 1024 || end - start < 1 || end - start > session.clip_limit_seconds) {
+      throw new Error('Choose a video up to ' + session.upload_limit_mib + ' MiB and a clip between 1 and ' + session.clip_limit_seconds + ' seconds.')
+    }
     const type = mime[source.name.split('.').pop().toLowerCase()] || source.type
     const headers = {
       'Idempotency-Key': requestKey,
@@ -113,6 +112,8 @@ const signOut = document.getElementById('sign-out')
 const capabilities = fetch('/api/session').then(async response => {
   if (!response.ok) return null
   const session = await response.json()
+  document.getElementById('upload-limits').textContent =
+    'Authorized MP4, MOV or WebM · up to ' + session.upload_limit_mib + ' MiB · clip up to ' + session.clip_limit_seconds + ' s'
   signOut.hidden = !session.sign_out
   document.getElementById('auto-option').hidden = !session.automatic_captions
   return session

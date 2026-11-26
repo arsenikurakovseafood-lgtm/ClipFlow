@@ -26,7 +26,46 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-class OwnerAuth:
+class OwnerSession:
+    def __init__(self, owner, secret):
+        self.owner = owner
+        self.secret = secret
+        self.lock = Lock()
+        self.attempts = []
+
+    def allow_attempt(self):
+        now = time.monotonic()
+        with self.lock:
+            self.attempts = [attempt for attempt in self.attempts if attempt > now - 60]
+            if len(self.attempts) >= 12:
+                return False
+            self.attempts.append(now)
+            return True
+
+    def issue(self, ttl):
+        payload = f'{int(time.time()) + ttl}.{secrets.token_urlsafe(24)}'
+        signature = self._signature(payload)
+        return f'{payload}.{signature}', ttl
+
+    def _signature(self, payload):
+        digest = hmac.new(self.secret, (self.owner + '.' + payload).encode(), hashlib.sha256).digest()
+        return base64.urlsafe_b64encode(digest).decode('ascii').rstrip('=')
+
+    def authenticated(self, raw):
+        try:
+            cookies = SimpleCookie()
+            cookies.load(raw)
+            token = cookies[COOKIE].value
+            expiry, nonce, signature = token.split('.')
+            return (expiry.isascii() and nonce.isascii() and signature.isascii()
+                    and int(expiry) > time.time()
+                    and hmac.compare_digest(signature, self._signature(expiry + '.' + nonce)))
+        except (CookieError, KeyError, ValueError):
+            return False
+
+
+
+class OwnerAuth(OwnerSession):
     def __init__(self, url, key, owner, secret, opener=None):
         parts = urlsplit(url)
         if parts.scheme != 'https' or not parts.hostname or parts.username or parts.password or (
@@ -34,13 +73,10 @@ class OwnerAuth:
             raise ValueError('CLIPFLOW_SUPABASE_URL must be an HTTPS origin')
         self.url = url.rstrip('/')
         self.key = key
-        self.owner = str(UUID(owner))
-        self.secret = secret.encode()
+        super().__init__(str(UUID(owner)), secret.encode())
         if not self.key or len(self.secret) < 32:
             raise ValueError('Supabase publishable key and a 32-character session secret are required')
         self.opener = opener or build_opener(NoRedirect)
-        self.lock = Lock()
-        self.attempts = []
 
     @classmethod
     def configured(cls):
@@ -51,15 +87,6 @@ class OwnerAuth:
         if not all(values):
             raise ValueError('Configure all four ClipFlow owner authentication settings')
         return cls(*values)
-
-    def allow_attempt(self):
-        now = time.monotonic()
-        with self.lock:
-            self.attempts = [attempt for attempt in self.attempts if attempt > now - 60]
-            if len(self.attempts) >= 12:
-                return False
-            self.attempts.append(now)
-            return True
 
     def login(self, email, password):
         request = Request(self.url + '/auth/v1/token?grant_type=password',
@@ -83,26 +110,21 @@ class OwnerAuth:
             raise LoginUnavailable
         return self.issue(min(ttl, SESSION_SECONDS))
 
-    def issue(self, ttl):
-        payload = f'{int(time.time()) + ttl}.{secrets.token_urlsafe(24)}'
-        signature = self._signature(payload)
-        return f'{payload}.{signature}', ttl
 
-    def _signature(self, payload):
-        digest = hmac.new(self.secret, (self.owner + '.' + payload).encode(), hashlib.sha256).digest()
-        return base64.urlsafe_b64encode(digest).decode('ascii').rstrip('=')
 
-    def authenticated(self, raw):
-        try:
-            cookies = SimpleCookie()
-            cookies.load(raw)
-            token = cookies[COOKIE].value
-            expiry, nonce, signature = token.split('.')
-            return (expiry.isascii() and nonce.isascii() and signature.isascii()
-                    and int(expiry) > time.time()
-                    and hmac.compare_digest(signature, self._signature(expiry + '.' + nonce)))
-        except (CookieError, KeyError, ValueError):
-            return False
+class PreviewAuth(OwnerSession):
+    def __init__(self, password):
+        if not 24 <= len(password) <= 256 or not password.isascii() or any(c.isspace() for c in password):
+            raise ValueError('Render preview requires a generated password of 24–256 characters')
+        encoded = password.encode()
+        self.password_digest = hashlib.sha256(encoded).digest()
+        owner = 'bfd55cf7-9950-45ef-a67e-02c07fc22bb1'
+        super().__init__(owner, hmac.digest(encoded, b'ClipFlow Render preview session', 'sha256'))
+
+    def login(self, email, password):
+        candidate = hashlib.sha256(password.encode()).digest()
+        if hmac.compare_digest(self.password_digest, candidate):
+            return self.issue(SESSION_SECONDS)
 
 
 def session_header(token, ttl):

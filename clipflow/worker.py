@@ -11,11 +11,17 @@ from tempfile import TemporaryDirectory
 from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Queue
 from clipflow.r2 import PrivateMedia
-from clipflow.render import Cue, render
+from clipflow.render import Cue, probe, render
 from clipflow.transcription import Transcriber, TranscriptionUnavailable
 
 
 def render_job(queue, job, data, source, output, transcriber):
+    if os.environ.get('CLIPFLOW_INTERNAL_RENDER_PREVIEW') == 'true':
+        info = probe(source)
+        if float(info['format']['duration']) > 120 or any(
+                stream.get('width', 0) > 1920 or stream.get('height', 0) > 1920
+                for stream in info['streams']):
+            raise ValueError('Preview source exceeds the two-minute or 1920-pixel limit')
     start_time, end_time = data['start'], data['end']
     cues = [Cue(**cue) for cue in data['cues']]
     if data.get('automatic_captions'):

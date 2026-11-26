@@ -14,3 +14,5 @@ RUN --mount=type=secret,id=build-ca \
 COPY --chown=10001:10001 clipflow /app/clipflow
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 USER 10001:10001
+
+CMD ["python", "-m", "clipflow.render_preview"]

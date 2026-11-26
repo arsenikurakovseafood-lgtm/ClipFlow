@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from clipflow.auth import LoginUnavailable, OwnerAuth, session_header
+from clipflow.auth import LoginUnavailable, OwnerAuth, PreviewAuth, session_header
 from clipflow.campaigns import Campaigns, Conflict
 from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Limit, Queue
@@ -75,8 +75,9 @@ class OwnerAPI(BaseHTTPRequestHandler):
             if not 0 < size <= 4096:
                 raise ValueError()
             payload = json.loads(self.rfile.read(size))
-            email, password = payload['email'], payload['password']
-            if not (isinstance(email, str) and 0 < len(email) <= 254 and
+            email, password = payload.get('email', ''), payload['password']
+            if not (isinstance(email, str) and len(email) <= 254
+                    and (email or isinstance(auth, PreviewAuth)) and
                     isinstance(password, str) and 0 < len(password) <= 256):
                 raise ValueError()
         except (TypeError, KeyError, ValueError, TimeoutError):
@@ -101,14 +102,20 @@ class OwnerAPI(BaseHTTPRequestHandler):
             return self.reply(200, {'sign_out': self.server.auth is not None,
                                     'automatic_captions': self.server.transcription_enabled,
                                     'direct_upload': self.server.media is not None,
-                                    'ai_planner': planner_budget() > 0})
+                                    'ai_planner': planner_budget() > 0,
+                                    'upload_limit_mib': 8 if isinstance(self.server.auth, PreviewAuth) else 25,
+                                    'clip_limit_seconds': 10 if isinstance(self.server.auth, PreviewAuth) else 60})
         files = {'/signin': ('signin.html', 'text/html'), '/signin.js': ('signin.js', 'text/javascript'),
                  '/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'),
                  '/app.css': ('app.css', 'text/css'),
                  '/campaigns.js': ('campaigns.js', 'text/javascript')}
         if url.path in files:
             name, mime = files[url.path]
-            return self.reply(200, (WEB / name).read_bytes(), mime + '; charset=utf-8')
+            content = (WEB / name).read_bytes()
+            if name == 'signin.html' and isinstance(self.server.auth, PreviewAuth):
+                content = content.replace(b'<body>', b'<body class="password-only">').replace(
+                    b'maxlength="254" required', b'maxlength="254"')
+            return self.reply(200, content, mime + '; charset=utf-8')
         if url.path == '/api/plans':
             return self.reply(200, self.server.plans.list())
         if url.path == '/api/campaigns':
@@ -237,8 +244,11 @@ class OwnerAPI(BaseHTTPRequestHandler):
             name = unquote(self.headers.get('X-Clip-Name', 'Source video'))[:120]
             start, end = (float(self.headers[f'X-Clip-{n}']) for n in ('Start', 'End'))
             cues = json.loads(unquote(self.headers.get('X-Clip-Cues', '[]')))
-            if not (0 < size <= MAX_UPLOAD and math.isfinite(start) and math.isfinite(end)
-                    and 0 <= start < end <= 1800 and 1 <= end - start <= 60
+            preview = isinstance(self.server.auth, PreviewAuth)
+            upload_limit = 8 * 1024 * 1024 if preview else MAX_UPLOAD
+            clip_limit = 10 if preview else 60
+            if not (0 < size <= upload_limit and math.isfinite(start) and math.isfinite(end)
+                    and 0 <= start < end <= 1800 and 1 <= end - start <= clip_limit
                     and isinstance(cues, list) and len(cues) <= 30):
                 raise ValueError()
             for cue in cues:
@@ -246,7 +256,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
                         and isinstance(cue['text'], str) and 0 < len(cue['text']) <= 160):
                     raise ValueError()
         except (TypeError, ValueError, KeyError):
-            return self.reply(400, {'error': 'Check the 25 MiB upload limit, 1–60 second clip and timestamped captions'})
+            return self.reply(400, {'error': 'Check the upload size, clip range and caption limits shown in Studio'})
         automatic = self.headers.get('X-Clip-Auto-Captions') == '1'
         if automatic and (not self.server.transcription_enabled or cues):
             return self.reply(409, {'error': 'Automatic captions require an enabled provider and no manual caption'})
@@ -321,12 +331,14 @@ def main():
     parser.add_argument('--port', default=3000, type=int)
     parser.add_argument('--authenticated-gateway', action='store_true')
     parser.add_argument('--application-auth', action='store_true')
+    parser.add_argument('--render-preview', action='store_true')
     args = parser.parse_args()
-    if args.bind != '127.0.0.1' and not (args.authenticated_gateway or args.application_auth):
+    if args.bind != '127.0.0.1' and not (args.authenticated_gateway or args.application_auth or args.render_preview):
         parser.error('Non-loopback access requires an authenticated gateway')
     args.root.mkdir(mode=0o700, parents=True, exist_ok=True)
     server = ThreadingHTTPServer((args.bind, args.port), OwnerAPI)
-    server.auth = OwnerAuth.configured()
+    server.auth = (PreviewAuth(os.environ.get('CLIPFLOW_PREVIEW_PASSWORD', ''))
+                   if args.render_preview else OwnerAuth.configured())
     if args.application_auth and not server.auth:
         parser.error('Application authentication requires all Supabase owner settings')
     server.transcription_enabled = transcription_enabled()

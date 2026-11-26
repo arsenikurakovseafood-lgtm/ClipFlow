@@ -91,3 +91,19 @@ it, creates a draft, and separately approves the campaign.
 
 - [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
 - [GPT-6 Luna pricing](https://developers.openai.com/api/docs/models/gpt-6-luna)
+
+## Temporary owner preview on Render
+
+Create a Docker Web Service from this repo and point Render at the branch
+containing the preview launcher. Leave Root Directory blank and use
+`./Dockerfile`. Set the instance type to Free and generate a random
+`CLIPFLOW_PREVIEW_PASSWORD` in Render's Environment Variables section.
+Use `/healthz` as the health check path. The Docker image starts the web
+process and FFmpeg worker together on a managed Render service. Open the
+service's HTTPS URL and sign in with the generated password.
+
+Only authorized test footage belongs in this preview. Its maximum source
+size is 8 MiB, source duration is two minutes, and clip duration is 10 seconds.
+Render Free can sleep and discard local files between restarts. For a durable
+studio, use the private owner deployment with persistent storage. No paid
+integration runs in the Free preview.

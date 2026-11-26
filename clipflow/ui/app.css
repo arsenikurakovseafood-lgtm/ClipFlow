@@ -67,3 +67,5 @@ textarea{min-height:100px;resize:vertical}
 #agent-form[hidden]{display:none}
 #agent-form{padding:0 0 18px;border-bottom:1px solid var(--edge);margin-bottom:18px}
 #agent-status{margin:0}
+
+.password-only #signin-email{display:none}

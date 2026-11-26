@@ -18,6 +18,8 @@ jobs:
         run: |
           node tests/browser.cjs "$RUNNER_TEMP/clipflow-evidence"
           cat "$RUNNER_TEMP/clipflow-evidence/verification.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify the Render preview
+        run: node tests/render-preview.cjs
       - name: Keep synthetic demo screenshots
         uses: actions/upload-artifact@v4
         with:
