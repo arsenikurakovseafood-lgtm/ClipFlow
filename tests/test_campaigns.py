@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 from clipflow.campaigns import Campaigns, Conflict
@@ -52,7 +53,7 @@ class CampaignTests(unittest.TestCase):
             identifier = campaigns.create({'name': 'Preview', 'goal': 'Test pause', 'channel': 'youtube',
                                            'duration_days': 3, 'cadence_days': 1, 'budget_cents': 0})
             campaigns.transition(identifier, 'approve')
-            job_id, _ = queue.reserve('fixture', 'Linked', '{"campaign_id":"' + identifier + '"}',
+            job_id, _ = queue.reserve('fixture', 'Linked', json.dumps({'campaign_id': identifier}),
                                       4, cost=0, budget=0, quota=8)
             queue.uploaded(job_id)
             campaigns.transition(identifier, 'pause')
@@ -67,3 +68,19 @@ class CampaignTests(unittest.TestCase):
             campaigns.transition(identifier, 'stop')
             self.assertFalse(queue.finish(job, output_bytes=4))
             self.assertEqual(queue.get(job_id)['state'], 'cancelled')
+
+    def test_campaign_transcription_cap_is_shared_by_its_jobs(self):
+        with tempfile.TemporaryDirectory() as root:
+            queue = Queue(Path(root) / 'jobs.sqlite3')
+            campaigns = Campaigns(queue)
+            identifier = campaigns.create({'name': 'Promo', 'goal': 'Test paid cap', 'channel': 'youtube',
+                                           'duration_days': 3, 'cadence_days': 1, 'budget_cents': 0,
+                                           'transcription_budget': 9000})
+            campaigns.transition(identifier, 'approve')
+            for index, amount in enumerate((6000, 4500, 3000)):
+                job_id, _ = queue.reserve(str(index), 'Linked', json.dumps({'campaign_id': identifier}),
+                                          4, cost=0, budget=0, quota=100)
+                queue.uploaded(job_id)
+                job = queue.claim()
+                self.assertEqual(queue.reserve_transcription(job, amount, 15000), index != 1)
+                queue.finish(job, output_bytes=4)

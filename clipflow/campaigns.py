@@ -37,6 +37,8 @@ class Campaigns:
             if 'workflow' not in campaign_columns:
                 db.execute("ALTER TABLE campaigns ADD COLUMN workflow TEXT NOT NULL DEFAULT 'visual'")
                 db.execute('ALTER TABLE campaigns ADD COLUMN target_clips INTEGER NOT NULL DEFAULT 3')
+            if 'transcription_budget' not in campaign_columns:
+                db.execute('ALTER TABLE campaigns ADD COLUMN transcription_budget INTEGER NOT NULL DEFAULT 0')
             db.execute("""CREATE TABLE IF NOT EXISTS manual_posts (
                 id TEXT PRIMARY KEY, campaign_id TEXT NOT NULL, job_id TEXT NOT NULL,
                 scheduled_at TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'scheduled',
@@ -103,15 +105,18 @@ class Campaigns:
         cadence = integer('cadence_days', 1, duration)
         budget = integer('budget_cents', 0, 100000)
         workflow, target_clips = data.get('workflow', 'visual'), data.get('target_clips', 3)
+        transcription_budget = data.get('transcription_budget', 0)
         if (workflow not in ('visual', 'speech', 'music', 'original') or type(target_clips) is not int
                 or not 1 <= target_clips <= 10):
             raise ValueError('Select a workflow and a target of 1–10 clips')
+        if type(transcription_budget) is not int or not 0 <= transcription_budget <= 100_000_000:
+            raise ValueError('Enter a transcription cap between $0 and $100')
         campaign_id = uuid.uuid4().hex
         with self.queue.transaction() as db:
             db.execute("""INSERT INTO campaigns (id,name,goal,channel,duration_days,cadence_days,budget_cents,
-                state,created_at,workflow,target_clips) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)""",
+                state,created_at,workflow,target_clips,transcription_budget) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)""",
                        (campaign_id, name, goal, channel, duration, cadence, budget,
-                        datetime.now(timezone.utc).isoformat(), workflow, target_clips))
+                        datetime.now(timezone.utc).isoformat(), workflow, target_clips, transcription_budget))
         return campaign_id
 
     def transition(self, campaign_id, action):

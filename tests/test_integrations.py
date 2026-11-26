@@ -1,4 +1,5 @@
 import json
+from io import BytesIO
 import tempfile
 import unittest
 from contextlib import closing
@@ -103,11 +104,43 @@ class IntegrationTests(unittest.TestCase):
         self.assertTrue(sdk.generate_presigned_url.call_args.kwargs['Params']['Key'].endswith(job['lease_token'] + '.mp4'))
         self.assertEqual(list(self.root.glob('media-*')), [])
 
+        batch_source = self.root / 'batch-fixture.mp4'
+        self.fixture(batch_source, seconds=8)
+        captions = b'WEBVTT\n\n00:00.000 --> 00:03.500\nPersistence is a habit.\n\n00:04.000 --> 00:07.500\nKeep showing up.\n'
+        bundle = batch_source.read_bytes() + captions
+        mime = 'application/octet-stream'
+        batch_headers = {'Cookie': cookie, 'Content-Type': mime, 'Idempotency-Key': str(uuid4()),
+                         'X-Source-Bytes': str(batch_source.stat().st_size), 'X-Music-Bytes': '0',
+                         'X-Subtitle-Bytes': str(len(captions)), 'X-Batch-Mode': 'speech',
+                         'X-Caption-Style': 'white', 'X-Clip-Count': '2', 'X-Release-Days': '3',
+                         'X-Content-Goal': 'Persistence'}
+        code, _, body = request('POST', '/api/batches', headers=batch_headers)
+        self.assertEqual(code, 201)
+        batch_id = json.loads(body)['id']
+        self.assertEqual(sdk.generate_presigned_url.call_args.kwargs['Params']['ContentLength'], len(bundle))
+        self.assertEqual(sdk.generate_presigned_url.call_args.kwargs['Params']['ContentType'], mime)
+        sdk.head_object.return_value = {'ContentType': mime, 'ContentLength': len(bundle) - 1, 'ETag': 'wrong'}
+        complete = f'/api/uploads/{batch_id}/complete'
+        self.assertEqual(request('POST', complete, headers={'Cookie': cookie})[0], 409)
+        sdk.head_object.return_value.update(ContentLength=len(bundle), ETag='"batch-revision"')
+        self.assertEqual(request('POST', complete, headers={'Cookie': cookie})[0], 202)
+        sdk.get_object.return_value = {'ContentLength': len(bundle), 'Body': BytesIO(bundle)}
+        work(self.root, self.queue, self.queue.claim(), media=media, owner_id=owner_id)
+        self.assertEqual(sdk.get_object.call_args.kwargs['IfMatch'], '"batch-revision"')
+        self.assertEqual(self.queue.get(batch_id)['state'], 'prepared')
+        for _ in range(2):
+            child = self.queue.claim()
+            work(self.root, self.queue, child, media=media, owner_id=owner_id)
+            self.assertEqual(self.queue.get(child['id'])['state'], 'ready')
+            self.assertEqual(request('GET', '/media/' + child['id'], headers={'Cookie': cookie})[0], 307)
+            self.assertFalse((self.root / child['id'] / (child['lease_token'] + '.mp4')).exists())
+        self.assertEqual(len(written_sizes), 3)
+
     @staticmethod
-    def fixture(source):
+    def fixture(source, seconds=2):
         run('ffmpeg', '-nostdin', '-loglevel', 'error', '-f', 'lavfi', '-i',
             'color=c=black:s=320x180:r=30', '-f', 'lavfi', '-i', 'sine=frequency=440',
-            '-t', '2', '-c:v', 'libx264', '-c:a', 'aac', str(source))
+            '-t', str(seconds), '-c:v', 'libx264', '-c:a', 'aac', str(source))
 
     def test_transcription_reservation_and_cache(self):
         source = self.root / 'fixture.mp4'

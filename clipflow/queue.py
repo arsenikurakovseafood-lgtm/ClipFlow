@@ -60,6 +60,9 @@ class Queue:
                 db.execute('ALTER TABLE jobs ADD COLUMN source_removed INTEGER NOT NULL DEFAULT 0')
             if 'review' not in columns:
                 db.execute("ALTER TABLE jobs ADD COLUMN review TEXT NOT NULL DEFAULT 'pending'")
+            if 'created_at' not in columns:
+                db.execute('ALTER TABLE jobs ADD COLUMN created_at REAL')
+                db.execute("UPDATE jobs SET created_at=? WHERE state='uploading'", (time.time(),))
             db.execute("""CREATE TABLE IF NOT EXISTS transcription_usage (
                 job_id TEXT PRIMARY KEY, month TEXT NOT NULL, micro_usd INTEGER NOT NULL,
                 captions TEXT
@@ -108,7 +111,7 @@ class Queue:
         with self.transaction() as db:
             if workloads_paused(db):
                 return False
-            current = db.execute("SELECT 1 FROM jobs WHERE id=? AND lease_token=? AND state='running'",
+            current = db.execute("SELECT json_extract(spec,'$.campaign_id') AS campaign_id FROM jobs WHERE id=? AND lease_token=? AND state='running'",
                                  (job['id'], job['lease_token'])).fetchone()
             attempted = db.execute('SELECT 1 FROM transcription_usage WHERE job_id=?',
                                    (job['id'],)).fetchone()
@@ -116,6 +119,15 @@ class Queue:
                               (month,)).fetchone()[0]
             if not current or attempted or used + cost > budget:
                 return False
+            if campaign_id := current['campaign_id']:
+                campaign = db.execute("SELECT transcription_budget FROM campaigns WHERE id=? AND state='active'",
+                                      (campaign_id,)).fetchone()
+                if not campaign:
+                    return False
+                campaign_used = db.execute("""SELECT COALESCE(SUM(u.micro_usd),0) FROM transcription_usage u
+                    JOIN jobs j ON j.id=u.job_id WHERE json_extract(j.spec,'$.campaign_id')=?""", (campaign_id,)).fetchone()[0]
+                if campaign_used + cost > campaign['transcription_budget']:
+                    return False
             db.execute('INSERT INTO transcription_usage (job_id,month,micro_usd) VALUES (?,?,?)',
                        (job['id'], month, cost))
             return True
@@ -153,8 +165,8 @@ class Queue:
             if spending + cost > budget or storage + size > quota:
                 raise Limit('Demo render budget or source storage quota exhausted')
             job_id = uuid.uuid4().hex
-            db.execute("""INSERT INTO jobs (id,request_key,name,spec,month,reserved,bytes)
-                          VALUES (?,?,?,?,?,?,?)""", (job_id, key, name, spec, month, cost, size))
+            db.execute("""INSERT INTO jobs (id,request_key,name,spec,month,reserved,bytes,created_at)
+                          VALUES (?,?,?,?,?,?,?,?)""", (job_id, key, name, spec, month, cost, size, time.time()))
             return job_id, True
 
     def get(self, job_id):
@@ -234,6 +246,8 @@ class Queue:
 
     def expiring(self, source_cutoff, output_cutoff):
         with self.transaction() as db:
+            db.execute("""UPDATE jobs SET state='expired',finished_at=?,spec=json_remove(spec,'$.source_url')
+                WHERE state='uploading' AND created_at<=?""", (time.time(), time.time() - 1800))
             # Retire the clip before deletion. An interrupted cleanup can be retried.
             db.execute("""UPDATE jobs SET state='expired'
                 WHERE state IN ('ready','failed','prepared','cancelled') AND finished_at<=?

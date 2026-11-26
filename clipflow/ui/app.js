@@ -5,6 +5,14 @@ let displayedJobs = ''
 let selected
 let requestKey
 
+async function uploadPrivateMedia(result, body) {
+  if (!result.url) return
+  const upload = await fetch(result.url, {method: 'PUT', headers: result.headers, body, redirect: 'error'})
+  if (!upload.ok) throw new Error('Private storage rejected the upload.')
+  const complete = await fetch('/api/uploads/' + result.id + '/complete', {method: 'POST'})
+  if (!complete.ok) throw new Error((await complete.json()).error)
+}
+
 function show(job) {
   if (selected === job.id) return
   selected = job.id
@@ -27,12 +35,15 @@ function sourceRecovery(job) {
     <small role="status"></small>`
   const button = form.querySelector('button')
   const status = form.querySelector('[role=status]')
+  const video = form.elements.video
+  if (!job.file_replacement) video.closest('label').hidden = true
   form.addEventListener('submit', async event => {
     event.preventDefault()
-    const file = form.elements.video.files[0]
+    const file = job.file_replacement ? video.files[0] : null
     const url = form.elements.url.value.trim()
     if (Boolean(file) === Boolean(url)) {
-      status.textContent = 'Choose one video file or enter one direct R2 file link.'
+      status.textContent = job.file_replacement ? 'Choose one video file or enter one direct R2 file link.'
+        : 'Enter a direct R2 video file link.'
       return
     }
     button.disabled = true
@@ -168,14 +179,7 @@ form.addEventListener('submit', async event => {
       })
       const result = await reservation.json()
       if (!reservation.ok) throw new Error(result.error)
-      if (result.url) {
-        const upload = await fetch(result.url, {
-          method: 'PUT', headers: result.headers, body: source, redirect: 'error'
-        })
-        if (!upload.ok) throw new Error('Private storage rejected the upload.')
-        const complete = await fetch('/api/uploads/' + result.id + '/complete', {method: 'POST'})
-        if (!complete.ok) throw new Error((await complete.json()).error)
-      }
+      await uploadPrivateMedia(result, source)
     } else {
       const response = await fetch('/api/jobs', {
         method: 'POST', body: source, headers: {...headers, 'Content-Type': type}

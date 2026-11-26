@@ -105,7 +105,8 @@ function campaignCard(campaign, ready, batches) {
   card.append(element('h3', campaign.name), element('p', campaign.goal),
     element('small', [campaign.state.toUpperCase(), providers[campaign.channel],
       campaign.target_clips + ' target clips', 'every ' + campaign.cadence_days + ' days',
-      campaign.duration_days + ' days total', euros.format(campaign.budget_cents / 100) + ' budget target'
+      campaign.duration_days + ' days total', euros.format(campaign.budget_cents / 100) + ' budget target',
+      ...(campaign.transcription_budget ? ['$' + (campaign.transcription_budget / 1000000).toFixed(2) + ' transcription cap'] : [])
     ].join(' · ')))
   const controls = element('div')
   controls.className = 'campaign-actions'
@@ -260,7 +261,7 @@ campaignForm.addEventListener('submit', async event => {
       name: values.name, goal: values.goal, channel: values.channel,
       duration_days: Number(values.duration_days), cadence_days: Number(values.cadence_days),
       budget_cents: Math.round(Number(values.budget) * 100), workflow: values.workflow,
-      target_clips: Number(values.target_clips)
+      target_clips: Number(values.target_clips), transcription_budget: Math.round(Number(values.transcription_budget) * 1000000)
     })) campaignForm.reset()
   } finally { submit.disabled = false }
 })
@@ -349,6 +350,7 @@ agent.addEventListener('submit', async event => {
   }
 })
 capabilities.then(session => {
+  document.getElementById('campaign-caption-budget').hidden = !session?.automatic_captions
   if (session?.youtube_metrics) {
     youtubeMetricsEnabled = true
     document.getElementById('youtube-analytics-status').textContent = 'Public YouTube statistics available for recorded posts.'

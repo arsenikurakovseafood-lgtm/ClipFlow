@@ -15,7 +15,7 @@ from clipflow.campaigns import Campaigns, Conflict
 from clipflow.insights import Insights
 from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Limit, Queue
-from clipflow.r2 import MEDIA_TYPES, PrivateMedia
+from clipflow.r2 import BUNDLE_MIME, MEDIA_TYPES, PrivateMedia
 from clipflow.render import MAX_OUTPUT_BYTES
 from clipflow.youtube import SOURCE_LIMIT, youtube_url
 from clipflow.transcription import enabled as transcription_enabled
@@ -98,14 +98,17 @@ class OwnerAPI(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlsplit(self.path)
         if url.path == '/healthz':
-            return self.reply(200, {'ok': True})
+            revision = os.environ.get('RENDER_GIT_COMMIT', '')
+            result = {'ok': True}
+            if re.fullmatch(r'[0-9a-f]{40}', revision):
+                result['revision'] = revision
+            return self.reply(200, result)
         if url.path not in ('/signin', '/signin.js', '/app.css') and not self.authenticate(url.path):
             return
         if url.path == '/api/session':
             return self.reply(200, {'sign_out': self.server.auth is not None,
                                     'automatic_captions': self.server.transcription_enabled,
                                     'direct_upload': self.server.media is not None,
-                                    'batch_editing': self.server.media is None,
                                     'ai_planner': planner_budget() > 0,
                                     'youtube_metrics': bool(os.environ.get('CLIPFLOW_YOUTUBE_DATA_API_KEY')),
                                     'upload_limit_mib': 8 if isinstance(self.server.auth, PreviewAuth) else 25,
@@ -132,7 +135,9 @@ class OwnerAPI(BaseHTTPRequestHandler):
             return self.reply(200, self.server.queue.control())
         if url.path == '/api/jobs':
             jobs = self.server.queue.all()
-            return self.reply(200, [{k: v for k, v in job.items() if k != 'lease_token'} for job in jobs])
+            return self.reply(200, [{**{k: v for k, v in job.items() if k != 'lease_token'},
+                                     'file_replacement': bool(job['source_replaceable'] and not self.server.media)}
+                                    for job in jobs])
         match = re.fullmatch(r'/media/([0-9a-f]{32})', url.path)
         if match:
             job = self.server.queue.get(match[1])
@@ -342,13 +347,13 @@ class OwnerAPI(BaseHTTPRequestHandler):
     def batch_request(self):
         if self.headers.get('Sec-Fetch-Site') not in (None, 'same-origin'):
             return self.reply(403, {'error': 'Cross-origin upload refused'})
-        if self.server.media:
-            return self.reply(409, {'error': 'Batch editing is currently available in Owner Preview storage'})
         if self.headers.get_content_type() != 'application/octet-stream' or self.headers.get('Transfer-Encoding'):
             return self.reply(415, {'error': 'Upload a source from the Batch Studio form'})
+        private = self.server.media is not None
         try:
-            video, music, captions, total = (int(self.headers[field]) for field in
-                ('X-Source-Bytes', 'X-Music-Bytes', 'X-Subtitle-Bytes', 'Content-Length'))
+            video, music, captions = (int(self.headers[field]) for field in
+                                      ('X-Source-Bytes', 'X-Music-Bytes', 'X-Subtitle-Bytes'))
+            total = int(self.headers.get('Content-Length', '0'))
             mode, style, key = (self.headers[field] for field in
                                 ('X-Batch-Mode', 'X-Caption-Style', 'Idempotency-Key'))
             count, days = int(self.headers['X-Clip-Count']), int(self.headers['X-Release-Days'])
@@ -374,7 +379,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
             if not (((0 < video <= SOURCE_LIMIT and not source_url and not sample)
                      or (video == 0 and bool(source_url) != sample))
                     and 0 <= music <= 8 * 1024 * 1024
-                    and 0 <= captions <= MAX_TRANSCRIPT and total == video + music + captions
+                    and 0 <= captions <= MAX_TRANSCRIPT and total == (0 if private else video + music + captions)
                     and re.fullmatch(r'[0-9a-f-]{36}', key)
                     and 1 <= count <= MAX_BATCH and 1 <= days <= 30 and 1 <= len(goal) <= 500
                     and style in PALETTES and mode in ('visual', 'speech', 'music', 'original')):
@@ -401,24 +406,45 @@ class OwnerAPI(BaseHTTPRequestHandler):
         if (len(hook) > 100 or len(cta) > 100 or (creative != 'standard' and not hook)
                 or (mode == 'original' and (not hook or not cta))):
             return self.reply(400, {'error': 'Add short opening text and a call to action for an original promo. Hook tests require opening text.'})
-        spec = json.dumps({'batch': True, 'mode': mode, 'caption_style': style, 'goal': goal,
+        parts = {'source': video, 'music': music, 'captions': captions}
+        size = sum(parts.values())
+        data = {'batch': True, 'mode': mode, 'caption_style': style, 'goal': goal,
                            'count': count, 'days': days, 'source_seconds': 120, 'automatic_captions': automatic,
-                           'clip_seconds': 10, 'size': 0, 'reference': reference, 'source_url': source_url,
+                           'clip_seconds': 10, 'size': size if private else 0, 'reference': reference, 'source_url': source_url,
                            'campaign_id': campaign_id, 'creative': creative, 'hook': hook, 'cta': cta,
-                           'sample': sample})
+                           'sample': sample}
+        if private:
+            data.update(storage='r2', mime=BUNDLE_MIME, parts=parts)
+        spec = json.dumps(data)
         try:
             job_id, created = self.server.queue.reserve(key, 'Batch: ' + name, spec,
-                total + (SOURCE_LIMIT if source_url or sample else 0) + 2 * count * BATCH_OUTPUT_BYTES,
+                size * (2 if private else 1) + (SOURCE_LIMIT if source_url or sample else 0) + 2 * count * BATCH_OUTPUT_BYTES,
                 cost=count * DEMO_RESERVATION, budget=DEMO_MONTHLY_BUDGET, quota=QUOTA)
         except Limit as error:
             return self.reply(429, {'error': str(error)})
+        if private:
+            row = self.server.queue.get(job_id)
+            if not row or row['state'] in ('cancelled', 'expired'):
+                return self.reply(409, {'error': 'This upload reservation expired or was cancelled. Open Studio to start a new batch.'})
+            if row['state'] != 'uploading':
+                return self.reply(202, {'id': job_id})
+            if row['spec'] != spec:
+                return self.reply(409, {'error': 'This upload key was already used for different input'})
+            if not size:
+                self.server.queue.uploaded(job_id)
+                return self.reply(202, {'id': job_id})
+            try:
+                signed = self.server.media.sign_upload(self.server.owner_id, job_id, mime=BUNDLE_MIME, size=size, bundle=True)
+            except Exception:
+                return self.reply(503, {'error': 'Could not sign private batch upload'})
+            return self.reply(201, {'id': job_id, **signed})
         # A batch reserves the full total until its exports expire. Source expiry does not
         # reduce the reservation because children share one source until rendering ends.
         if created:
             folder = self.server.root / job_id
             try:
                 folder.mkdir(mode=0o700)
-                for filename, remaining in (('source', video), ('music', music), ('captions', captions)):
+                for filename, remaining in parts.items():
                     if not remaining:
                         continue
                     with (folder / filename).open('xb') as target:
@@ -441,6 +467,8 @@ class OwnerAPI(BaseHTTPRequestHandler):
         if self.headers.get('Transfer-Encoding'):
             return self.reply(415, {'error': 'Use the replacement form in Content'})
         url = unquote(self.headers.get('X-Replacement-URL', '')).strip()
+        if self.server.media and not url:
+            return self.reply(400, {'error': 'Use a direct R2 file link for this batch or start a new private upload in Studio.'})
         try:
             size = int(self.headers.get('Content-Length', '0'))
             if url:
@@ -495,13 +523,15 @@ class OwnerAPI(BaseHTTPRequestHandler):
         job = self.server.queue.get(job_id)
         if not job:
             return self.reply(404, {'error': 'Upload unavailable'})
+        if job['state'] in ('cancelled', 'expired'):
+            return self.reply(409, {'error': 'Upload reservation expired or was cancelled'})
         data = json.loads(job['spec'])
         if data.get('storage') != 'r2':
             return self.reply(409, {'error': 'This job was created for local storage'})
         if job['state'] == 'uploading':
             try:
-                data['etag'] = self.server.media.verify_upload(
-                    self.server.owner_id, job_id, mime=data['mime'], size=data['size'])
+                data['etag'] = self.server.media.verify_upload(self.server.owner_id, job_id, mime=data['mime'],
+                                                              size=data['size'], bundle=bool(data.get('batch')))
             except Exception:
                 return self.reply(409, {'error': 'The private upload is missing or does not match the reservation'})
             self.server.queue.uploaded(job_id, json.dumps(data))

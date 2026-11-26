@@ -49,6 +49,33 @@ def render_job(queue, job, data, source, output, transcriber):
     return render(source, output, start_time, end_time, cues)
 
 
+def stage_private_batch(directory, job_id, data, media, owner_id):
+    directory.mkdir(mode=0o700, exist_ok=True)
+    complete = directory / 'bundle-staged'
+    if not data['size'] or complete.exists():
+        return
+    with TemporaryDirectory(prefix='.r2-bundle-', dir=directory) as scratch:
+        scratch = Path(scratch)
+        bundle = scratch / 'bundle'
+        media.stage_source(owner_id, job_id, etag=data['etag'], size=data['size'], destination=bundle)
+        with bundle.open('rb') as source:
+            for name in ('source', 'music', 'captions'):
+                size = data['parts'][name]
+                if not size:
+                    continue
+                item = scratch / name
+                with item.open('xb') as output:
+                    remaining = size
+                    while remaining:
+                        chunk = source.read(min(remaining, 65536))
+                        if not chunk:
+                            raise OSError('Incomplete batch bundle')
+                        output.write(chunk)
+                        remaining -= len(chunk)
+                item.replace(directory / name)
+        complete.touch(mode=0o600)
+
+
 def work(root, queue, job, transcriber=None, media=None, owner_id=None):
     data = json.loads(job['spec'])
     directory = root / job['id']
@@ -56,12 +83,14 @@ def work(root, queue, job, transcriber=None, media=None, owner_id=None):
     start = time.monotonic()
     remote = data.get('storage') == 'r2'
     try:
+        if remote and media is None:
+            raise TranscriptionUnavailable('Private cloud storage is unavailable.')
         if data.get('batch'):
+            if remote:
+                stage_private_batch(directory, job['id'], data, media, owner_id)
             stage_batch(root, queue, job, data, transcriber)
             return
-        if remote:
-            if not media:
-                raise TranscriptionUnavailable('Private cloud storage is unavailable.')
+        if remote and not data.get('batch_parent'):
             with TemporaryDirectory(prefix='media-', dir=root) as scratch:
                 source = Path(scratch) / 'source'
                 media.stage_source(owner_id, job['id'], etag=data['etag'], size=data['size'],
@@ -72,6 +101,11 @@ def work(root, queue, job, transcriber=None, media=None, owner_id=None):
             source_directory = root / data.get('batch_parent', job['id'])
             directory.mkdir(mode=0o700, exist_ok=True)
             result = render_job(queue, job, data, source_directory / 'source', output, transcriber)
+            if remote:
+                try:
+                    media.save_output(owner_id, job['id'], job['lease_token'], output)
+                finally:
+                    output.unlink(missing_ok=True)
     except (BatchError, TranscriptionUnavailable) as error:
         queue.finish(job, error=str(error))
     except (ValueError, OSError, KeyError, StopIteration):
@@ -97,10 +131,11 @@ def sweep(root, queue, media, owner_id, *, now, source_seconds, output_seconds):
             if spec.get('storage') == 'r2':
                 if not media:
                     continue
-                media.drop_source(owner_id, job['id'])
-                if job['state'] == 'expired' and job['lease_token']:
+                if spec.get('size'):
+                    media.drop_source(owner_id, job['id'])
+                if job['state'] == 'expired' and job['lease_token'] and not spec.get('batch'):
                     media.drop_output(owner_id, job['id'], job['lease_token'])
-            else:
+            if spec.get('storage') != 'r2' or spec.get('batch') or spec.get('batch_parent'):
                 directory = root / job['id']
                 if job['state'] == 'expired':
                     if directory.exists():
@@ -110,6 +145,7 @@ def sweep(root, queue, media, owner_id, *, now, source_seconds, output_seconds):
                     (directory / 'music').unlink(missing_ok=True)
                     (directory / 'captions').unlink(missing_ok=True)
                     (directory / 'source-replacement').unlink(missing_ok=True)
+                    (directory / 'bundle-staged').unlink(missing_ok=True)
             queue.reclaimed(job, spec.get('size', 0))
         except Exception:
             print(f"Media cleanup will retry for job {job['id']}", file=sys.stderr)

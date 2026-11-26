@@ -234,6 +234,8 @@ def stage_batch(root, queue, job, data, transcriber=None):
             clip['music_start'] = min(clip['music_start'], max(0, track_seconds - (end - start)))
         if auto and data['mode'] != 'speech':
             clip['automatic_captions'] = True
+        if data.get('storage') == 'r2':
+            clip['storage'] = 'r2'
         children.append((child_id, title, clip))
 
     queue.expand_batch(job, children, BATCH_OUTPUT_BYTES,

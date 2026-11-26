@@ -43,7 +43,7 @@ function updateBatchMode(session) {
 }
 
 capabilities.then(session => {
-  if (!session?.batch_editing) {
+  if (!session) {
     document.getElementById('batch-unavailable').hidden = false
     return
   }
@@ -80,6 +80,7 @@ batchForm.addEventListener('submit', async event => {
   button.disabled = true
   batchKey ||= crypto.randomUUID()
   try {
+    const bundle = new Blob([...(source ? [source] : []), ...(music ? [music] : []), captions])
     const response = await fetch('/api/batches', {
       method: 'POST',
       headers: {
@@ -103,10 +104,11 @@ batchForm.addEventListener('submit', async event => {
         'X-Caption-Style': values.get('style'),
         'X-Batch-Auto-Captions': values.has('automaticCaptions') && !captions.size ? '1' : '0'
       },
-      body: new Blob([...(source ? [source] : []), ...(music ? [music] : []), captions])
+      body: batchSession.direct_upload ? null : bundle
     })
     const result = await response.json()
     if (!response.ok) throw new Error(result.error)
+    if (batchSession.direct_upload) await uploadPrivateMedia(result, bundle)
     batchStatus.textContent = sourceUrl
       ? 'Video import queued. Open Content to check whether the source was retrieved.'
       : 'Batch queued. Open Content to track rendering.'

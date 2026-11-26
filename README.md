@@ -73,6 +73,7 @@ Set the R2 bucket to private. Scope the key to this bucket and configure CORS
 only for the exact studio origin, permitting PUT and the Content-Type header.
 Set lifecycle expiry for abandoned media under the owners prefix as a backstop.
 The app keeps normal source and output durations in the retention settings.
+Batch source media, track and caption files share one bounded signed private upload. The worker stages the pinned bundle and stores each resulting clip separately in R2. The integration test uses a fixture S3 endpoint with real FFmpeg output. Verify CORS and signatures on the live bucket before owner use.
 
 Run on the authorized cloud host:
 
@@ -86,6 +87,7 @@ captions, provide the worker-only OpenAI key and a positive monthly USD budget
 in microdollars. Usage estimates reserve one full billed minute per six-second
 window at the documented model rate. Estimate precision and provider access
 still need validation with the live account.
+When captions are enabled, linked campaign jobs also require an explicit USD cap in the campaign draft. A zero cap prevents campaign transcription charges. The worker reserves both budgets atomically before the call.
 
 - [Supabase owner authentication](https://supabase.com/docs/reference/javascript/auth-signinwithpassword)
 - [R2 presigned URLs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/)

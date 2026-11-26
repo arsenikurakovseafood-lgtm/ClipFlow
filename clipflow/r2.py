@@ -8,6 +8,7 @@ import re
 from uuid import UUID
 
 MEDIA_TYPES = {'video/mp4', 'video/quicktime', 'video/webm'}
+BUNDLE_MIME = 'application/octet-stream'
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 
@@ -43,16 +44,16 @@ class PrivateMedia:
         return {'Bucket': self.bucket,
                 'Key': f'owners/{UUID(str(owner_id)).hex}/{UUID(str(asset_id)).hex}/{variant}'}
 
-    def sign_upload(self, owner_id, asset_id, *, mime, size):
-        if mime not in MEDIA_TYPES or type(size) is not int or not 0 < size <= MAX_UPLOAD_BYTES:
+    def sign_upload(self, owner_id, asset_id, *, mime, size, bundle=False):
+        if mime not in ({BUNDLE_MIME} if bundle else MEDIA_TYPES) or type(size) is not int or not 0 < size <= MAX_UPLOAD_BYTES:
             raise ValueError('Select a supported video within the upload limit')
         params = self._object(owner_id, asset_id, 'source')
         params.update(ContentType=mime, ContentLength=size)
         url = self.s3.generate_presigned_url('put_object', Params=params, ExpiresIn=300)
         return {'url': url, 'headers': {'Content-Type': mime}}
 
-    def verify_upload(self, owner_id, asset_id, *, mime, size):
-        if mime not in MEDIA_TYPES or type(size) is not int or not 0 < size <= MAX_UPLOAD_BYTES:
+    def verify_upload(self, owner_id, asset_id, *, mime, size, bundle=False):
+        if mime not in ({BUNDLE_MIME} if bundle else MEDIA_TYPES) or type(size) is not int or not 0 < size <= MAX_UPLOAD_BYTES:
             raise ValueError('Invalid asset reservation')
         obj = self._object(owner_id, asset_id, 'source')
         found = self.s3.head_object(**obj)
