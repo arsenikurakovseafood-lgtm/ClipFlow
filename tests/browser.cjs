@@ -52,7 +52,9 @@ async function main() {
     browser = await chromium.launch(executablePath ? {executablePath} : {channel: 'chrome'})
     const page = await browser.newPage({viewport: {width: 1400, height: 1000}})
     await page.goto(base)
+    await page.getByRole('navigation').getByRole('link', {name: 'Content'}).click()
     await page.getByText('Your rendered clips will appear here.').waitFor()
+    await page.goto(base + '#trim')
     await page.locator('#render').getByLabel('Source video').setInputFiles(source)
     await page.getByLabel('Optional caption').fill('Synthetic cloud render')
     await page.getByRole('button', {name: 'Queue render'}).click()
@@ -69,7 +71,7 @@ async function main() {
     worker = start('clipflow.worker', state)
 
     const desktop = await browser.newPage({viewport: {width: 1400, height: 1000}})
-    await desktop.goto(base)
+    await desktop.goto(base + '#content')
     await desktop.getByRole('button', {name: 'Preview', exact: true}).waitFor()
     await desktop.locator('video').evaluate(async video => {
       video.muted = true
@@ -89,11 +91,12 @@ async function main() {
     await desktop.screenshot({path: join(evidence, 'owner-desktop.png'), fullPage: true})
 
     const mobile = await browser.newPage({viewport: {width: 390, height: 844}, isMobile: true, hasTouch: true})
-    await mobile.goto(base)
+    await mobile.goto(base + '#content')
     await mobile.getByRole('button', {name: 'Preview', exact: true}).waitFor()
     assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
     await mobile.screenshot({path: join(evidence, 'owner-mobile.png'), fullPage: true})
 
+    await desktop.getByRole('navigation').getByRole('link', {name: 'Campaigns'}).click()
     const planner = desktop.locator('#campaign-form')
     await planner.getByLabel('Name').fill('Synthetic release')
     await planner.getByLabel('Content goal').fill('Post a short teaser using the fixture')
@@ -117,6 +120,7 @@ async function main() {
         'X-Clip-Name': 'out-of-range-fixture.mp4', 'X-Clip-Start': '3', 'X-Clip-End': '8'}
     })
     assert.equal(bad.status, 202)
+    await desktop.getByRole('navigation').getByRole('link', {name: 'Content'}).click()
     await desktop.getByText('Source or clip could not be processed. Check the video and clip range.').waitFor()
     const report = '# ClipFlow browser evidence\n\nSynthetic source only. Verified actual FFmpeg rendering, ' +
       'browser closure before worker start, job persistence across web restart, 720 × 1280 MP4 playback, ' +

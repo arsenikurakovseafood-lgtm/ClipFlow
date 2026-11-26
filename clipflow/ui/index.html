@@ -5,27 +5,39 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ClipFlow | Owner Studio</title>
 <link rel="stylesheet" href="/app.css">
+<script defer src="/workspace.js"></script>
 <script defer src="/app.js"></script>
 <script defer src="/campaigns.js"></script>
 <script defer src="/batch.js"></script>
 </head>
 <body>
-<header><div class="bar"><a class="brand" href="/">Clip<span>Flow</span></a>
-<nav aria-label="Workspace"><a href="#overview">Overview</a><a href="#studio">Studio</a><a href="#content">Content</a><a href="#campaigns">Campaigns</a><a href="#accounts">Accounts</a></nav>
-<div><span class="mode">Owner preview</span> <button id="sign-out" hidden>Sign out</button></div></div></header>
-<main>
-<section id="overview" class="hero">
+<div class="workspace-shell">
+<aside class="sidebar" aria-label="ClipFlow navigation">
+<a class="brand" href="#overview">Clip<span>Flow</span></a>
+<nav aria-label="Workspace">
+<a href="#overview">Overview</a>
+<a href="#studio">Studio</a>
+<a href="#content">Content</a>
+<a href="#campaigns">Campaigns</a>
+<a href="#accounts">Accounts</a>
+</nav>
+<div class="sidebar-footer"><span class="mode">Owner preview</span><button id="sign-out" hidden>Sign out</button></div>
+</aside>
+<main class="workspace-main">
+<section id="overview" class="hero" data-screen>
 <p class="eyebrow">OWNER WORKSPACE</p>
 <h1>Make the cut.</h1>
-<p>Create vertical clips individually or from a batch brief. Your renders run on the cloud worker.</p>
+<p>Create a series of vertical clips, review the results and plan when to publish.</p>
+<a class="workspace-cta" href="#studio">Create clips</a>
 <div class="stats"><div><strong id="ready">—</strong><span>Ready to preview</span></div>
 <div><strong id="active">—</strong><span>In progress</span></div>
 <div><strong id="failed">—</strong><span>Failed</span></div></div>
 </section>
-<div class="workspace">
-<section id="studio">
+<section id="trim" data-screen hidden>
 <p class="eyebrow">STUDIO</p>
 <h2>Create a clip</h2>
+<p>Use this screen when you know the exact start and end.</p>
+<a href="#studio">Back to Studio</a>
 <form id="render">
 <label class="upload">Source video
 <input type="file" name="source" accept=".mp4,.mov,.webm,video/mp4,video/quicktime,video/webm" required>
@@ -42,7 +54,7 @@
 <p id="status" role="status"></p>
 </form>
 </section>
-<section id="content">
+<section id="content" data-screen hidden>
 <p class="eyebrow">CONTENT</p>
 <h2>Render library</h2>
 <p id="library-status" role="status">Loading jobs…</p>
@@ -52,28 +64,33 @@
 </div>
 <ul id="jobs"></ul>
 </section>
-</div>
-<section id="batch-studio" class="provider-section" hidden>
+<section id="batch-studio" data-screen hidden>
 <p class="eyebrow">BATCH STUDIO</p>
-<h2>Turn one source into a series</h2>
-<form id="batch-form">
-<label>Editing mode<select name="mode"><option value="speech">Spoken highlights</option><option value="music">Music promos</option></select></label>
+<h1>Create clips</h1>
+<p>Pick a video and choose what you want ClipFlow to make. You can review every result before publishing.</p>
+<p id="batch-unavailable" hidden>Series editing is unavailable with the current storage settings. <a href="#trim">Open manual trim</a>.</p>
+<form id="batch-form" hidden>
+<label>What are you making?<select name="mode"><option value="visual">Quick clips · use the video as it is</option><option value="speech">Podcast highlights · choose by what is said</option><option value="music">Music promos · use your song as the audio</option></select></label>
 <label>What should the clips achieve?<textarea name="goal" maxlength="500" placeholder="Find motivational moments about persistence for people building their first app" required></textarea></label>
 <label>YouTube or Spotify reference (optional)<input name="reference" type="url" maxlength="400" placeholder="https://…"><small>Saved as a reference. Upload the authorized source files below.</small></label>
-<label>Batch source video<input name="source" type="file" accept=".mp4,.mov,.webm" required><small>Authorized MP4, MOV or WebM · up to 8 MiB and 2 minutes</small></label>
+<label>Where is your video?<select name="sourceKind"><option value="file">Upload a video file</option><option value="link">Use a direct Cloudflare R2 file link</option></select></label>
+<label id="batch-source-url" hidden>Video file link<input name="sourceUrl" type="url" maxlength="2400"><small>Paste the HTTPS link to the actual video file in Cloudflare R2.</small></label>
+<label id="batch-source-file">Upload video<input name="source" type="file" accept=".mp4,.mov,.webm" required><small>Authorized MP4, MOV or WebM · up to 8 MiB and 2 minutes</small></label>
 <label id="batch-track" hidden>Track audio file<input name="music" type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac"><small>Upload your authorized track file. It replaces audio from the footage.</small></label>
-<label>Timed subtitles <input name="captions" type="file" accept=".srt,.vtt"><small id="batch-caption-help">Required for spoken highlights in this preview. Use SRT or WebVTT.</small></label>
+<label>Subtitle file (.srt or .vtt) <input name="captions" type="file" accept=".srt,.vtt"><small id="batch-caption-help">Required for spoken highlights in this preview. Use SRT or WebVTT.</small></label>
 <div class="campaign-fields">
 <label>Number of clips<input name="count" type="number" min="1" max="10" value="3" required></label>
 <label>Release window (days)<input name="days" type="number" min="1" max="30" value="3" required></label>
 <label>Caption color<select name="style"><option value="white">White</option><option value="pink">Hot pink</option><option value="red">Red</option><option value="blue">Sky blue</option></select></label>
 </div>
-<small>Up to 10 seconds per clip. Suggested release days appear in the library. Publishing is manual.</small>
-<button type="submit">Create batch</button>
+<small>Clips can be up to 10 seconds. When they are ready, open Content to play them.</small>
+<button type="submit">Create clips</button>
+<a href="#content">Open Content</a>
 <p id="batch-status" role="status"></p>
 </form>
+<p><a href="#trim">Trim a single clip manually</a></p>
 </section>
-<div class="workspace campaign-workspace" id="campaigns">
+<div class="workspace campaign-workspace" id="campaigns" data-screen hidden>
 <section id="agent">
 <p class="eyebrow">CAMPAIGN PLANNER</p>
 <h2>Plan a campaign</h2>
@@ -105,11 +122,17 @@
 <div id="publication-list"></div>
 </section>
 </div>
-<section id="accounts" class="provider-section">
+<section id="accounts" data-screen hidden>
 <p class="eyebrow">ACCOUNTS</p>
-<h2>Publishing destinations</h2>
-<p>YouTube, Instagram and TikTok currently use manual handoff. No social accounts are connected, and handoff does not confirm publication.</p>
+<h1>Publishing accounts</h1>
+<p>This preview supports manual publishing. Create your clips in Studio and put them on a schedule in Campaigns.</p>
+<div class="account-list">
+<article><h2>Instagram</h2><p>Manual publishing · connection unavailable</p><a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer">Open Instagram</a></article>
+<article><h2>TikTok</h2><p>Manual publishing · connection unavailable</p><a href="https://www.tiktok.com/upload" target="_blank" rel="noopener noreferrer">Open TikTok Upload</a></article>
+<article><h2>YouTube</h2><p>Manual publishing · connection unavailable</p><a href="https://studio.youtube.com/" target="_blank" rel="noopener noreferrer">Open YouTube Studio</a></article>
+</div>
 </section>
 <footer>Cloud demo · Temporary storage · No paid provider calls</footer>
 </main>
+</div>
 </body></html>

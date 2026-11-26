@@ -118,7 +118,7 @@ class Queue:
     def claim(self, now=None):
         now = time.time() if now is None else now
         with self.transaction() as db:
-            db.execute("""UPDATE jobs SET state='failed', error='Worker lease expired twice', finished_at=?
+            db.execute("""UPDATE jobs SET state='failed', error='Worker lease expired twice', finished_at=?, spec=json_remove(spec,'$.source_url')
                           WHERE state='running' AND lease_until<=? AND attempts>=2""", (now, now))
             job = db.execute("""SELECT * FROM jobs
                 WHERE state='queued' OR (state='running' AND lease_until<=?)
@@ -134,7 +134,8 @@ class Queue:
 
     def finish(self, job, *, error=None, elapsed=None, output_bytes=None):
         with self.transaction() as db:
-            return bool(db.execute("""UPDATE jobs SET state=?, error=?, elapsed=?,output_bytes=?,finished_at=?
+            return bool(db.execute("""UPDATE jobs SET state=?, error=?, elapsed=?,output_bytes=?,finished_at=?,
+                spec=json_remove(spec,'$.source_url')
                 WHERE id=? AND lease_token=? AND state='running'""",
                 ('failed' if error else 'ready', error, elapsed, output_bytes, time.time(),
                  job['id'], job['lease_token'])).rowcount)
@@ -142,7 +143,7 @@ class Queue:
     def expand_batch(self, job, children, max_bytes, detail):
         with self.transaction() as db:
             changed = db.execute("""UPDATE jobs SET state='prepared',error=?,finished_at=?,
-                bytes=bytes-? WHERE id=? AND lease_token=? AND state='running'""",
+                bytes=bytes-?,spec=json_remove(spec,'$.source_url') WHERE id=? AND lease_token=? AND state='running'""",
                 (detail, time.time(), 2 * max_bytes * (json.loads(job['spec'])['count'] - len(children)),
                  job['id'], job['lease_token'])).rowcount
             if not changed:

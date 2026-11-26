@@ -57,3 +57,24 @@ Keep showing up for your goal.
                 streams = probe(root / job['id'] / (job['lease_token'] + '.mp4'))['streams']
                 self.assertEqual([(s['codec_type'], s['codec_name']) for s in streams],
                                  [('video', 'h264'), ('audio', 'aac')])
+
+    def test_direct_r2_video_download_is_bounded_and_rejects_other_hosts(self):
+        from io import BytesIO
+        from unittest.mock import Mock
+        from clipflow.batch import direct_source_url, fetch_source
+
+        host = 'pub-' + 'a' * 32 + '.r2.dev'
+        url = 'https://' + host + '/authorized.mp4'
+        for candidate in ('http://' + host + '/file', 'https://youtube.com/watch?v=123',
+                          'https://' + host + '@localhost/file', 'https://' + host + '.example.com/file'):
+            with self.assertRaises(ValueError):
+                direct_source_url(candidate)
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / 'source'
+            opener = Mock()
+            stream = BytesIO(b'preview fixture')
+            stream.headers = {'Content-Length': str(len(stream.getvalue()))}
+            stream.status = 200
+            opener.open.return_value = stream
+            fetch_source(url, output, opener)
+            self.assertEqual(output.read_bytes(), b'preview fixture')

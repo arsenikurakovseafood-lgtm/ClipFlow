@@ -3,13 +3,23 @@ const batchMode = batchForm.elements.namedItem('mode')
 const batchTrack = document.getElementById('batch-track')
 const batchStatus = document.getElementById('batch-status')
 let batchKey
+const sourceKind = batchForm.elements.namedItem('sourceKind')
+function updateSourceKind() {
+  const link = sourceKind.value === 'link'
+  document.getElementById('batch-source-file').hidden = link
+  document.getElementById('batch-source-url').hidden = !link
+  batchForm.elements.namedItem('source').required = !link
+  batchForm.elements.namedItem('sourceUrl').required = link
+}
+sourceKind.addEventListener('change', updateSourceKind)
 
 function updateBatchMode(session) {
   const music = batchMode.value === 'music'
+  const speech = batchMode.value === 'speech'
   batchTrack.hidden = !music
   batchForm.elements.namedItem('music').required = music
-  batchForm.elements.namedItem('captions').required = !music && !session.automatic_captions
-  document.getElementById('batch-caption-help').textContent = music
+  batchForm.elements.namedItem('captions').required = speech && !session.automatic_captions
+  document.getElementById('batch-caption-help').textContent = !speech
     ? 'Optional. Use an SRT or WebVTT file aligned to the source.'
     : session.automatic_captions
       ? 'Attach SRT or WebVTT, or generate captions from source speech with OpenAI.'
@@ -17,8 +27,11 @@ function updateBatchMode(session) {
 }
 
 capabilities.then(session => {
-  if (!session?.batch_editing) return
-  document.getElementById('batch-studio').hidden = false
+  if (!session?.batch_editing) {
+    document.getElementById('batch-unavailable').hidden = false
+    return
+  }
+  batchForm.hidden = false
   updateBatchMode(session)
   batchMode.addEventListener('change', () => updateBatchMode(session))
 })
@@ -26,7 +39,8 @@ batchForm.addEventListener('input', () => { batchKey = undefined })
 batchForm.addEventListener('submit', async event => {
   event.preventDefault()
   const values = new FormData(batchForm)
-  const source = values.get('source')
+  const sourceUrl = values.get('sourceKind') === 'link' ? values.get('sourceUrl').trim() : ''
+  const source = sourceUrl ? null : values.get('source')
   const music = values.get('mode') === 'music' ? values.get('music') : null
   const captions = values.get('captions')
   const button = batchForm.querySelector('button')
@@ -39,18 +53,19 @@ batchForm.addEventListener('submit', async event => {
       headers: {
         'Content-Type': 'application/octet-stream',
         'Idempotency-Key': batchKey,
-        'X-Source-Bytes': String(source.size),
+        'X-Source-Bytes': String(source?.size || 0),
         'X-Music-Bytes': String(music?.size || 0),
         'X-Subtitle-Bytes': String(captions.size),
-        'X-Clip-Name': encodeURIComponent(source.name),
+        'X-Clip-Name': encodeURIComponent(source?.name || 'Linked video'),
         'X-Content-Goal': encodeURIComponent(values.get('goal')),
         'X-Batch-Reference': encodeURIComponent(values.get('reference')),
+        'X-Batch-Source-URL': encodeURIComponent(sourceUrl),
         'X-Batch-Mode': values.get('mode'),
         'X-Clip-Count': values.get('count'),
         'X-Release-Days': values.get('days'),
         'X-Caption-Style': values.get('style')
       },
-      body: new Blob([source, ...(music ? [music] : []), captions])
+      body: new Blob([...(source ? [source] : []), ...(music ? [music] : []), captions])
     })
     const result = await response.json()
     if (!response.ok) throw new Error(result.error)

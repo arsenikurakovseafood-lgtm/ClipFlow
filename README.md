@@ -132,3 +132,11 @@ from authorized uploads. Media is never fetched from those URLs.
 
 - [YouTube API developer policies](https://developers.google.com/youtube/terms/developer-policies/)
 - [Spotify developer policy](https://developer.spotify.com/policy)
+
+Studio opens from the left sidebar. **Quick clips** takes a video without a
+subtitle file. **Podcast highlights** needs speech timestamps, supplied by
+SRT/WebVTT in the free preview or by an enabled transcription integration.
+The **Use a direct Cloudflare R2 file link** source option accepts the direct
+HTTPS location of an authorized object. The worker imports it without
+redirects, subject to the same 8 MiB limit. An ordinary YouTube, streaming
+movie, or Spotify page is a reference.

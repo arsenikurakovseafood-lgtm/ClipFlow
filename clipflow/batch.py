@@ -1,9 +1,14 @@
 """Prepare distinct short clips from authorized footage and optional caption tracks."""
 import re
 import subprocess
+import time
 from bisect import bisect_left
 from dataclasses import asdict
+from urllib.parse import urlsplit
+from urllib.request import Request, build_opener
 from uuid import UUID, uuid5
+
+from clipflow.auth import NoRedirect
 
 from clipflow.render import Cue, LOCAL_PROTOCOLS, probe
 
@@ -123,9 +128,49 @@ def scene_windows(source, duration, count, limit):
     return selected
 
 
+def direct_source_url(value):
+    parts = urlsplit(value)
+    host = r'(?:pub-[0-9a-f]{32}\.r2\.dev|[0-9a-f]{32}\.r2\.cloudflarestorage\.com)'
+    if not (0 < len(value) <= 2400 and parts.scheme == 'https' and re.fullmatch(host, parts.netloc)
+            and parts.path and parts.path != '/' and not parts.fragment
+            and not any(character.isspace() for character in value)):
+        raise ValueError('Use an HTTPS file link from Cloudflare R2.')
+    return value
+
+
+def fetch_source(url, destination, opener=None):
+    request = Request(direct_source_url(url), headers={'Accept': 'video/*,application/octet-stream'})
+    limit = 8 * 1024 * 1024
+    deadline = time.monotonic() + 40
+    staged = destination.with_name('source.part')
+    try:
+        with (opener or build_opener(NoRedirect)).open(request, timeout=8) as response:
+            length = response.headers.get('Content-Length')
+            if (response.status != 200 or response.headers.get('Content-Encoding', 'identity') != 'identity'
+                    or length is None or not 0 < int(length) <= limit):
+                raise ValueError('Invalid input size')
+            remaining = int(length)
+            with staged.open('wb') as output:
+                while remaining:
+                    if time.monotonic() > deadline:
+                        raise TimeoutError()
+                    chunk = response.read1(min(65536, remaining))
+                    if not chunk:
+                        raise OSError('Incomplete remote source')
+                    output.write(chunk)
+                    remaining -= len(chunk)
+        staged.replace(destination)
+    except (OSError, ValueError) as error:
+        raise BatchError('Could not import the video. Check the R2 link, expiry, and 8 MiB limit.') from error
+    finally:
+        staged.unlink(missing_ok=True)
+
+
 def stage_batch(root, queue, job, data, transcriber=None):
     folder = root / job['id']
     source = folder / 'source'
+    if data.get('source_url') and not source.exists():
+        fetch_source(data['source_url'], source)
     info = probe(source)
     duration = float(info['format']['duration'])
     if not (3 <= duration <= data['source_seconds']) or not any(
@@ -141,11 +186,13 @@ def stage_batch(root, queue, job, data, transcriber=None):
                 raise BatchError('Attach an SRT or VTT file for spoken highlights.')
             cues = transcriber.captions(queue, job, source, 0, duration)
         windows = speech_windows(cues, duration, data['goal'], data['count'], data['clip_seconds'])
-    else:
+    elif data['mode'] == 'music':
         track = probe(folder / 'music')
         track_seconds = float(track['format']['duration'])
         if not 3 <= track_seconds <= 1800 or not any(stream['codec_type'] == 'audio' for stream in track['streams']):
             raise BatchError('Upload a playable track of at least three seconds.')
+        windows = scene_windows(source, duration, data['count'], data['clip_seconds'])
+    else:
         windows = scene_windows(source, duration, data['count'], data['clip_seconds'])
     if not windows:
         raise BatchError('No complete highlights fit the requested duration. Check the source and subtitles.')
