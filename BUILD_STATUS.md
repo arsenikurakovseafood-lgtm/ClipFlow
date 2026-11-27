@@ -1,5 +1,13 @@
 # Build status
 
+## Built-in YouTube conversion
+
+The Render owner preview defaults to an in-worker yt-dlp and FFmpeg converter.
+It accepts the existing time-range form without a VidFetch key, bounds the
+subprocess and output, and surfaces YouTube access refusals as source failures.
+Automated coverage injects the source-acquisition step and renders an actual
+vertical MP4. Live YouTube availability depends on the cloud host's access.
+
 ## Free-only YouTube setup on Render
 
 The private Render Free preview can use a VidFetch key without attaching a

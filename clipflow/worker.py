@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 
 from clipflow.batch import BATCH_OUTPUT_BYTES, PALETTES, BatchError, stage_batch
 from clipflow.converter import VidFetch
+from clipflow.builtin_converter import BuiltinConverter, enabled as builtin_youtube_enabled
 from clipflow.insights import Insights
 from clipflow.planner import Plans, planner_budget
 from clipflow.queue import Queue, source_retention_seconds
@@ -165,7 +166,9 @@ def main():
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     queue = Queue(root / 'jobs.sqlite3')
     transcriber = Transcriber.configured() or (CloudSpeech() if CloudSpeech.available() else None)
-    converter = VidFetch.configured()
+    builtin = builtin_youtube_enabled()
+    vidfetch = None if builtin else VidFetch.configured()
+    converter = BuiltinConverter() if builtin else vidfetch
     plans = Plans(queue)
     insights = Insights(queue)
     plan_key = os.environ.get('OPENAI_API_KEY', '')
@@ -182,9 +185,9 @@ def main():
             sweep(root, queue, media, owner_id, now=now, source_seconds=source_seconds,
                   output_seconds=output_seconds)
             insights.expire_platform_metrics(now)
-            if converter:
+            if vidfetch:
                 for job_id, remote_id in queue.pending_converter_cleanup():
-                    converter.release(queue, job_id, remote_id)
+                    vidfetch.release(queue, job_id, remote_id)
             next_sweep = now + 300
         job = queue.claim()
         if job:

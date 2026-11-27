@@ -28,7 +28,7 @@ async function main() {
     'sys.exit(render_preview.main())'
   ].join('\n')
   const server = spawn('python3', ['-c', startPreview, root], {
-    env: {...process.env, PORT: port, CLIPFLOW_PREVIEW_PASSWORD: password},
+    env: {...process.env, PORT: port, CLIPFLOW_PREVIEW_PASSWORD: password, CLIPFLOW_BUILTIN_YOUTUBE: 'false'},
     stdio: 'inherit'
   })
   const exited = once(server, 'exit')

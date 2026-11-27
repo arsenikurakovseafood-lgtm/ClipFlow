@@ -6,12 +6,63 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from clipflow.converter import API, CONVERSION_FAILED, USAGE_API, ConversionError, VidFetch, segment_range
+from clipflow.builtin_converter import BuiltinConverter
 from clipflow.queue import Queue
 from clipflow.render import probe, run
 from clipflow.worker import work
+from clipflow.youtube import ACCESS_REFUSED
 
 
 class ConverterTests(unittest.TestCase):
+    def test_builtin_worker_keeps_only_the_requested_interval(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            queue = Queue(root / 'jobs.sqlite3')
+            window = {'start': 540, 'end': 544}
+            url = 'https://youtu.be/abcdefghijk?si=tracking'
+            spec = {'batch': True, 'mode': 'visual', 'goal': 'Cut the selected range', 'count': 1,
+                    'days': 1, 'caption_style': 'white', 'source_seconds': 120, 'clip_seconds': 10,
+                    'source_url': url, 'trim': window}
+            job_id, _ = queue.reserve('source', 'Selected range', json.dumps(spec), 24,
+                                      cost=0, budget=0, quota=100)
+            folder = root / job_id
+            folder.mkdir()
+            queue.uploaded(job_id)
+            converter = BuiltinConverter()
+
+            def create_segment(arguments, _scratch, _log, _queue, _job):
+                self.assertEqual(arguments[arguments.index('--download-sections') + 1], '*540-544')
+                self.assertEqual(arguments[-1], 'https://www.youtube.com/watch?v=abcdefghijk')
+                output = arguments[arguments.index('--output') + 1]
+                run('ffmpeg', '-nostdin', '-v', 'error', '-f', 'lavfi', '-i',
+                    'color=c=blue:s=320x180:r=30', '-t', '4', '-c:v', 'libx264', output)
+                return 0
+
+            with patch.object(converter, 'run', side_effect=create_segment):
+                work(root, queue, queue.claim(), converter=converter)
+            self.assertEqual(queue.get(job_id)['state'], 'prepared')
+            clip = queue.claim()
+            work(root, queue, clip)
+            self.assertEqual(queue.get(clip['id'])['state'], 'ready')
+            output = root / clip['id'] / (clip['lease_token'] + '.mp4')
+            self.assertLessEqual(float(probe(output)['format']['duration']), 4)
+
+    def test_builtin_worker_reports_platform_refusal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            converter = BuiltinConverter()
+            queue = Mock()
+
+            def refused(_arguments, _scratch, log, _queue, _job):
+                log.write(b'ERROR: HTTP Error 403: Forbidden')
+                return 1
+
+            with patch.object(converter, 'run', side_effect=refused):
+                with self.assertRaises(ConversionError) as error:
+                    converter.stage(queue, {}, 'https://youtu.be/abcdefghijk',
+                                    {'start': 0, 'end': 5}, Path(directory) / 'source')
+            self.assertEqual(str(error.exception), ACCESS_REFUSED)
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
     def test_timecodes_require_a_bounded_forward_range(self):
         self.assertEqual(segment_range('12:00', '00:13:00'), {'start': 720, 'end': 780})
         for pair in [('01:60', '02:05'), ('15', '12'), ('1:00', '3:01'), ('', '80'),
@@ -117,7 +168,8 @@ class ConverterTests(unittest.TestCase):
     def test_render_free_mode_needs_no_persistent_disk_and_hides_key_from_web(self):
         from clipflow.render_preview import DATA, service_settings
 
-        environment = {'CLIPFLOW_VIDFETCH_FREE_ONLY': 'true', 'CLIPFLOW_VIDFETCH_API_KEY': 'fixture'}
+        environment = {'CLIPFLOW_BUILTIN_YOUTUBE': 'false', 'CLIPFLOW_VIDFETCH_FREE_ONLY': 'true',
+                       'CLIPFLOW_VIDFETCH_API_KEY': 'fixture'}
         with patch.dict('os.environ', environment, clear=True), \
                 patch('clipflow.render_preview.os.path.ismount', return_value=False):
             root, web, worker = service_settings()
@@ -126,3 +178,14 @@ class ConverterTests(unittest.TestCase):
         self.assertNotIn('CLIPFLOW_VIDFETCH_API_KEY', web)
         self.assertEqual(worker['CLIPFLOW_VIDFETCH_API_KEY'], 'fixture')
         self.assertEqual(worker['CLIPFLOW_VIDFETCH_FREE_ONLY'], 'true')
+
+    def test_render_builtin_mode_needs_no_provider_key_or_disk(self):
+        from clipflow.render_preview import DATA, service_settings
+
+        with patch.dict('os.environ', {}, clear=True), \
+                patch('clipflow.render_preview.os.path.ismount', return_value=False):
+            root, web, worker = service_settings()
+        self.assertEqual(root, DATA)
+        self.assertEqual(web['CLIPFLOW_BUILTIN_YOUTUBE'], 'true')
+        self.assertEqual(worker['CLIPFLOW_BUILTIN_YOUTUBE'], 'true')
+        self.assertNotIn('CLIPFLOW_VIDFETCH_API_KEY', worker)

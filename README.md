@@ -152,15 +152,22 @@ language can be selected in Studio. An optional SRT/WebVTT override lives in
 **Use a Cloudflare R2 file link** accepts a direct HTTPS video link.
 **Convert a YouTube segment to MP4** accepts an authorized single video or
 Short and a 3–120 second interval, for example **From 12:00** and **To 13:00**.
-The original video may be longer. ClipFlow sends both timestamps to VidFetch,
-verifies that the returned MP4 matches the selected duration, and renders from
-that file. A subtitle file uses the original video's timestamps. If conversion
-fails, replace the source with a file already cut to the chosen window.
+The original video may be longer. On the Render owner preview, ClipFlow's
+cloud worker uses yt-dlp and FFmpeg to request the range directly. It verifies
+that the resulting MP4 matches the selected duration before rendering. A
+subtitle file uses the original video's timestamps. If YouTube refuses access
+from the host, replace the source with an authorized MP4 already cut to the
+chosen window. The built-in path has no VidFetch dependency. Its inputs remain
+limited to one authorized YouTube video and an 8 MiB staged segment.
 **Run sample now** queues 00:06–00:18 from ClipFlow's own walkthrough in one
 click and opens Content to track both clips.
 Uploads and direct R2 files also support an optional range for editing.
 
-#### Configure segment conversion on an approved cloud deployment
+#### Configure the optional external converter
+
+Render prioritizes the built-in converter. The VidFetch instructions below
+apply only if an operator explicitly sets `CLIPFLOW_BUILTIN_YOUTUBE=false`
+and chooses to use the external converter.
 
 For the private Render Free preview, create an API key in a VidFetch Free
 account with no payment balance or prepaid packs. In the service’s

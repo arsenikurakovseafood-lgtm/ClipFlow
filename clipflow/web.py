@@ -13,6 +13,7 @@ from clipflow.auth import LoginUnavailable, OwnerAuth, PreviewAuth, session_head
 from clipflow.batch import BATCH_OUTPUT_BYTES, MAX_BATCH, MAX_TRANSCRIPT, PALETTES, direct_source_url
 from clipflow.campaigns import Campaigns, Conflict
 from clipflow.converter import DISABLED, monthly_limit, segment_range
+from clipflow.builtin_converter import enabled as builtin_youtube_enabled
 from clipflow.sample import SAMPLE_SECONDS
 from clipflow.insights import Insights
 from clipflow.planner import Plans, planner_budget
@@ -104,6 +105,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
             result = {'ok': True}
             if re.fullmatch(r'[0-9a-f]{40}', revision):
                 result['revision'] = revision
+                result['youtube_builtin'] = builtin_youtube_enabled()
             return self.reply(200, result)
         if url.path not in ('/signin', '/signin.js', '/app.css') and not self.authenticate(url.path):
             return
@@ -114,7 +116,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
                                     'direct_upload': self.server.media is not None,
                                     'ai_planner': planner_budget() > 0,
                                     'youtube_metrics': bool(os.environ.get('CLIPFLOW_YOUTUBE_DATA_API_KEY')),
-                                    'youtube_converter': monthly_limit() > 0,
+                                    'youtube_converter': builtin_youtube_enabled() or monthly_limit() > 0,
                                     'upload_limit_mib': 8 if isinstance(self.server.auth, PreviewAuth) else 25,
                                     'clip_limit_seconds': 10 if isinstance(self.server.auth, PreviewAuth) else 60})
         files = {'/signin': ('signin.html', 'text/html'), '/signin.js': ('signin.js', 'text/javascript'),
@@ -390,7 +392,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
                         return self.reply(400, {'error': 'Enter the start and end timecodes for the YouTube segment.'})
                     if self.headers.get('X-Source-Authorized') != '1':
                         return self.reply(400, {'error': 'Confirm permission to process and edit the source video.'})
-                    if not monthly_limit():
+                    if not builtin_youtube_enabled() and not monthly_limit():
                         return self.reply(409, {'error': DISABLED})
                 else:
                     try:

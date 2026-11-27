@@ -18,13 +18,16 @@ def service_settings():
     env['CLIPFLOW_INTERNAL_RENDER_PREVIEW'] = 'true'
     path = PERSISTENT_DATA if os.path.ismount(PERSISTENT_DATA) and os.access(PERSISTENT_DATA, os.W_OK) else DATA
     owner_env, worker_env = dict(env), dict(env)
+    builtin = os.environ.get('CLIPFLOW_BUILTIN_YOUTUBE', 'true') == 'true'
+    if builtin:
+        owner_env['CLIPFLOW_BUILTIN_YOUTUBE'] = worker_env['CLIPFLOW_BUILTIN_YOUTUBE'] = 'true'
     if os.environ.get('CLIPFLOW_YOUTUBE_DATA_API_KEY'):
         owner_env['CLIPFLOW_YOUTUBE_DATA_API_KEY'] = os.environ['CLIPFLOW_YOUTUBE_DATA_API_KEY']
     for name in ('CLIPFLOW_SOURCE_RETENTION_HOURS', 'CLIPFLOW_OUTPUT_RETENTION_HOURS'):
         value = os.environ.get(name, '')
         if value.isascii() and value.isdecimal() and 0 < int(value) <= 2160:
             owner_env[name] = worker_env[name] = value
-    converter = VidFetch.configured()
+    converter = None if builtin else VidFetch.configured()
     if converter and (path == PERSISTENT_DATA or converter.free_only):
         owner_env.update(CLIPFLOW_VIDFETCH_ENABLED='true', CLIPFLOW_VIDFETCH_MONTHLY_JOBS=str(converter.limit))
         worker_env.update(CLIPFLOW_VIDFETCH_ENABLED='true', CLIPFLOW_VIDFETCH_MONTHLY_JOBS=str(converter.limit),
