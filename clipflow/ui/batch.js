@@ -43,7 +43,7 @@ sourceKind.addEventListener('change', () => {
 runSample.addEventListener('click', () => {
   const values = new FormData()
   const example = {sourceKind: 'sample', mode: 'visual', segmentStart: '0:06', segmentEnd: '0:18',
-    count: '2', days: '1', style: 'white', goal: 'ClipFlow walkthrough', campaign: '', reference: '',
+    count: '2', days: '1', style: 'white', goal: 'Reelattice walkthrough', campaign: '', reference: '',
     creative: 'standard', hook: '', cta: ''}
   for (const [field, value] of Object.entries(example)) values.set(field, value)
   values.set('captions', new Blob())
@@ -104,10 +104,17 @@ function openCampaignStudio(campaign) {
   batchForm.elements.goal.value = campaign.goal.slice(0, 500)
   batchForm.elements.count.value = campaign.target_clips
   batchForm.elements.days.value = Math.min(30, campaign.duration_days)
+  batchForm.elements.creative.value = campaign.hook_format || 'standard'
+  batchForm.elements.hook.value = campaign.hook_text || ''
+  batchForm.elements.cta.value = campaign.cta || ''
+  const context = document.getElementById('studio-campaign-context')
+  context.hidden = false
+  context.textContent = 'Source for ' + campaign.name + '. Your finished clips will appear in Content for approval.'
   batchKey = undefined
   location.hash = 'studio'
 }
 batchForm.elements.campaign.addEventListener('change', () => {
+  document.getElementById('studio-campaign-context').hidden = !batchForm.elements.campaign.value
   openCampaignStudio(workspaceCampaigns.find(campaign => campaign.id === batchForm.elements.campaign.value))
 })
 batchForm.addEventListener('input', () => { batchKey = undefined })
@@ -143,7 +150,7 @@ async function submitBatch(values, button) {
         'X-Source-Bytes': String(source?.size || 0),
         'X-Music-Bytes': String(music?.size || 0),
         'X-Subtitle-Bytes': String(captions.size),
-        'X-Clip-Name': encodeURIComponent(sample ? 'ClipFlow walkthrough sample' : source?.name || 'Linked video'),
+        'X-Clip-Name': encodeURIComponent(sample ? 'Reelattice walkthrough sample' : source?.name || 'Linked video'),
         'X-Content-Goal': encodeURIComponent(values.get('goal')),
         'X-Batch-Reference': encodeURIComponent(values.get('reference')),
         'X-Batch-Source-URL': encodeURIComponent(sourceUrl),

@@ -17,6 +17,7 @@ from clipflow.builtin_converter import enabled as builtin_youtube_enabled
 from clipflow.sample import SAMPLE_SECONDS
 from clipflow.insights import Insights
 from clipflow.planner import Plans, planner_budget
+from clipflow.publishing import publishing_enabled
 from clipflow.queue import Limit, Queue
 from clipflow.r2 import BUNDLE_MIME, MEDIA_TYPES, PrivateMedia
 from clipflow.render import MAX_OUTPUT_BYTES
@@ -107,7 +108,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
                 result['revision'] = revision
                 result['youtube_builtin'] = builtin_youtube_enabled()
             return self.reply(200, result)
-        if url.path not in ('/signin', '/signin.js', '/app.css') and not self.authenticate(url.path):
+        if url.path not in ('/signin', '/signin.js', '/app.css', '/reelattice.css', '/reelattice-hero.webp', '/welcome') and not self.authenticate(url.path):
             return
         if url.path == '/api/session':
             return self.reply(200, {'sign_out': self.server.auth is not None,
@@ -116,10 +117,14 @@ class OwnerAPI(BaseHTTPRequestHandler):
                                     'direct_upload': self.server.media is not None,
                                     'ai_planner': planner_budget() > 0,
                                     'youtube_metrics': bool(os.environ.get('CLIPFLOW_YOUTUBE_DATA_API_KEY')),
+                                    'youtube_publishing': publishing_enabled(),
                                     'youtube_converter': builtin_youtube_enabled() or monthly_limit() > 0,
                                     'upload_limit_mib': 8 if isinstance(self.server.auth, PreviewAuth) else 25,
                                     'clip_limit_seconds': 10 if isinstance(self.server.auth, PreviewAuth) else 60})
+        if url.path == '/reelattice-hero.webp':
+            return self.reply(200, (WEB / 'reelattice-hero.webp').read_bytes(), 'image/webp')
         files = {'/signin': ('signin.html', 'text/html'), '/signin.js': ('signin.js', 'text/javascript'),
+                 '/welcome': ('welcome.html', 'text/html'), '/reelattice.css': ('reelattice.css', 'text/css'),
                  '/': ('index.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'),
                  '/app.css': ('app.css', 'text/css'),
                  '/campaigns.js': ('campaigns.js', 'text/javascript'), '/batch.js': ('batch.js', 'text/javascript'),
@@ -217,6 +222,8 @@ class OwnerAPI(BaseHTTPRequestHandler):
             if self.path == '/api/plans':
                 return self.reply(202, {'id': self.server.plans.request(data.get('goal'), planner_budget())})
             if self.path == '/api/campaigns':
+                if data.get('publication_mode') == 'youtube' and not publishing_enabled():
+                    raise Conflict('Automatic YouTube publishing is not configured')
                 return self.reply(201, {'id': self.server.campaigns.create(data)})
             if self.path == '/api/settings':
                 if type(data.get('paused')) is not bool:

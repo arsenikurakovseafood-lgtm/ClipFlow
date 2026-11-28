@@ -1,7 +1,7 @@
 const screens = {
   overview: 'overview', studio: 'batch-studio', 'batch-studio': 'batch-studio',
   trim: 'trim', content: 'content', campaigns: 'campaigns', accounts: 'accounts',
-  agent: 'agent', revenue: 'revenue', settings: 'settings'
+  agent: 'agent', analytics: 'analytics', revenue: 'revenue', settings: 'settings'
 }
 function openScreen() {
   const requested = window.location.hash.slice(1)

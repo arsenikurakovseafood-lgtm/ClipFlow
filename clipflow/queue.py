@@ -61,6 +61,8 @@ class Queue:
                 db.execute('ALTER TABLE jobs ADD COLUMN source_removed INTEGER NOT NULL DEFAULT 0')
             if 'review' not in columns:
                 db.execute("ALTER TABLE jobs ADD COLUMN review TEXT NOT NULL DEFAULT 'pending'")
+            if 'hold_until' not in columns:
+                db.execute('ALTER TABLE jobs ADD COLUMN hold_until REAL NOT NULL DEFAULT 0')
             if 'created_at' not in columns:
                 db.execute('ALTER TABLE jobs ADD COLUMN created_at REAL')
                 db.execute("UPDATE jobs SET created_at=? WHERE state='uploading'", (time.time(),))
@@ -298,10 +300,10 @@ class Queue:
                 WHERE state='uploading' AND created_at<=?""", (time.time(), time.time() - 1800))
             # Retire the clip before deletion. An interrupted cleanup can be retried.
             db.execute("""UPDATE jobs SET state='expired'
-                WHERE state IN ('ready','failed','prepared','cancelled') AND finished_at<=?
+                WHERE state IN ('ready','failed','prepared','cancelled') AND finished_at<=? AND hold_until<=?
                   AND NOT EXISTS (SELECT 1 FROM jobs AS child
                     WHERE json_extract(child.spec,'$.batch_parent')=jobs.id
-                    AND child.state IN ('queued','running','ready','failed'))""", (output_cutoff,))
+                    AND child.state IN ('queued','running','ready','failed'))""", (output_cutoff, time.time()))
             return [dict(row) for row in db.execute("""SELECT id, spec, lease_token, state
                 FROM jobs WHERE (state='expired' AND (bytes>0 OR source_removed=0))
                     OR (state IN ('ready','failed','prepared','cancelled') AND source_removed=0 AND finished_at<=?

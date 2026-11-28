@@ -4,6 +4,52 @@ const providers = {youtube: 'YouTube Shorts', instagram: 'Instagram Reels', tikt
 let campaignSignature = ''
 let workspaceCampaigns = []
 let youtubeMetricsEnabled = false
+let youtubePublishingEnabled = false
+
+const templates = {
+  shorts: {name: 'Short clips campaign', goal: 'Find standalone moments that make viewers want to watch the full video.',
+    workflow: 'speech', target_clips: 3, duration_days: 7, cadence_days: 1, channel: 'youtube',
+    hook_format: 'standard', hook_text: '', cta: 'Watch the full episode'},
+  music: {name: 'Music release', goal: 'Introduce the track to new listeners with clips that capture its mood.',
+    workflow: 'music', target_clips: 3, duration_days: 7, cadence_days: 2, channel: 'tiktok',
+    hook_format: 'statement', hook_text: 'This is the part I keep replaying.', cta: 'Hear the full track'},
+  product: {name: 'Product launch', goal: 'Show one practical use case and give interested viewers a clear next step.',
+    workflow: 'original', target_clips: 3, duration_days: 7, cadence_days: 1, channel: 'instagram',
+    hook_format: 'question', hook_text: 'What if this took half the time?', cta: 'Try it yourself'}
+}
+
+function updatePublicationMode() {
+  const available = youtubePublishingEnabled && campaignForm.elements.channel.value === 'youtube'
+  const mode = campaignForm.elements.publication_mode
+  mode.options[1].disabled = !available
+  if (!available) mode.value = 'manual'
+  const automatic = mode.value === 'youtube'
+  document.getElementById('youtube-consent').hidden = !automatic
+  campaignForm.elements.publication_consent.required = automatic
+  campaignForm.elements.release_start.required = automatic
+}
+
+document.querySelectorAll('[data-campaign-template]').forEach(button => {
+  button.addEventListener('click', () => {
+    for (const [field, value] of Object.entries(templates[button.dataset.campaignTemplate])) {
+      campaignForm.elements.namedItem(field).value = value
+    }
+    const now = new Date(Date.now() + 3600000)
+    campaignForm.elements.release_start.value = new Date(now - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+    document.querySelectorAll('[data-campaign-template]').forEach(option => {
+      option.setAttribute('aria-pressed', String(option === button))
+    })
+    updatePublicationMode()
+  })
+})
+document.querySelectorAll('[data-hook]').forEach(button => {
+  button.addEventListener('click', () => {
+    campaignForm.elements.hook_format.value = button.dataset.hook
+    campaignForm.elements.hook_text.value = button.textContent
+  })
+})
+campaignForm.elements.channel.addEventListener('change', updatePublicationMode)
+campaignForm.elements.publication_mode.addEventListener('change', updatePublicationMode)
 
 async function campaignAction(path, data = {}) {
   try {
@@ -102,15 +148,25 @@ function campaignCard(campaign, ready, batches) {
   const card = element('article')
   card.className = 'campaign-card'
   const euros = new Intl.NumberFormat('en', {style: 'currency', currency: 'EUR'})
+  const cadence = campaign.release_interval_seconds
+    ? 'every ' + new Intl.NumberFormat('en', {maximumFractionDigits: 1})
+      .format(campaign.release_interval_seconds / 3600) + 'h'
+    : 'every ' + campaign.cadence_days + ' days'
   card.append(element('h3', campaign.name), element('p', campaign.goal),
     element('small', [campaign.state.toUpperCase(), providers[campaign.channel],
-      campaign.target_clips + ' target clips', 'every ' + campaign.cadence_days + ' days',
+      campaign.target_clips + ' target clips', cadence,
       campaign.duration_days + ' days total', euros.format(campaign.budget_cents / 100) + ' budget target',
       ...(campaign.transcription_budget ? ['$' + (campaign.transcription_budget / 1000000).toFixed(2) + ' transcription cap'] : [])
     ].join(' · ')))
+  if (campaign.release_start) card.append(element('p', 'First release · ' + new Date(campaign.release_start).toLocaleString()))
   const controls = element('div')
   controls.className = 'campaign-actions'
-  const states = {draft: ['approve', 'stop'], active: ['pause', 'stop'], paused: ['resume', 'stop']}
+  if (campaign.state === 'draft') {
+    controls.append(action('Approve & add source', async () => {
+      if (await campaignAction(base + '/approve')) openCampaignStudio(campaign)
+    }))
+  }
+  const states = {draft: ['stop'], active: ['pause', 'stop'], paused: ['resume', 'stop']}
   for (const next of states[campaign.state] || []) {
     controls.append(action(next[0].toUpperCase() + next.slice(1), () => campaignAction(base + '/' + next)))
   }
@@ -118,9 +174,17 @@ function campaignCard(campaign, ready, batches) {
   if (campaign.state === 'active') {
     const eligible = job => !job.campaign_id || job.campaign_id === campaign.id
     controls.append(action('Create clips for this campaign', () => openCampaignStudio(campaign)))
-    card.append(scheduleForm(base, ready.filter(eligible)))
+    if (campaign.release_start) {
+      card.append(element('p', 'Clip approval adds it to the ' +
+        (campaign.publication_mode === 'youtube' ? 'YouTube upload queue.' : 'manual release queue.')))
+      const review = element('a', 'Review clips')
+      review.href = '#content'
+      card.append(review)
+    } else {
+      card.append(scheduleForm(base, ready.filter(eligible)))
+    }
     const finished = batches.filter(eligible)
-    if (finished.length) card.append(batchScheduleForm(base, finished))
+    if (finished.length && !campaign.release_start) card.append(batchScheduleForm(base, finished))
   }
   return card
 }
@@ -132,15 +196,18 @@ function postCard(post) {
   link.href = '/media/' + post.job_id
   card.append(element('h3', post.name), element('p', post.campaign_name + ' · ' + providers[post.channel]),
     element('p', new Date(post.scheduled_at).toLocaleString() + ' · ' + post.state.replaceAll('_', ' ')))
+  if (post.publication_error) card.append(element('p', post.publication_error))
   if (!['asset_expired', 'cancelled'].includes(post.state)) card.append(link)
   if (post.state === 'due') card.append(action('Mark handed off', () => campaignAction('/api/manual-posts/' + post.id + '/handoff')))
   const endpoint = '/api/manual-posts/' + post.id
   if (post.post_url) {
-    const link = element('a', 'Open reported post')
+    const confirmed = post.state === 'published'
+    const link = element('a', confirmed ? 'Watch on YouTube' : 'Open reported post')
     link.href = post.post_url
     link.target = '_blank'
     link.rel = 'noopener noreferrer'
-    card.append(element('p', 'Post reported by owner'), link, metricForm(endpoint))
+    card.append(element('p', confirmed ? 'Public on YouTube' : 'Post reported by owner'), link)
+    if (!confirmed) card.append(metricForm(endpoint))
     if (post.channel === 'youtube' && youtubeMetricsEnabled) {
       card.append(action('Read current YouTube statistics', async () => {
         if (await campaignAction(endpoint + '/youtube-metrics')) await refreshInsights()
@@ -254,15 +321,22 @@ async function refreshCampaigns() {
 campaignForm.addEventListener('submit', async event => {
   event.preventDefault()
   const values = Object.fromEntries(new FormData(campaignForm))
-  const submit = campaignForm.querySelector('button')
+  const submit = campaignForm.querySelector('button[type=submit]')
   submit.disabled = true
   try {
     if (await campaignAction('/api/campaigns', {
       name: values.name, goal: values.goal, channel: values.channel,
       duration_days: Number(values.duration_days), cadence_days: Number(values.cadence_days),
       budget_cents: Math.round(Number(values.budget) * 100), workflow: values.workflow,
-      target_clips: Number(values.target_clips), transcription_budget: Math.round(Number(values.transcription_budget) * 1000000)
-    })) campaignForm.reset()
+      target_clips: Number(values.target_clips), transcription_budget: Math.round(Number(values.transcription_budget) * 1000000),
+      release_start: values.release_start ? new Date(values.release_start).toISOString() : null,
+      publication_mode: values.publication_mode, publication_consent: values.publication_consent === 'on',
+      hook_format: values.hook_format, hook_text: values.hook_text, cta: values.cta
+    })) {
+      campaignForm.reset()
+      updatePublicationMode()
+      document.querySelectorAll('[data-campaign-template]').forEach(option => option.setAttribute('aria-pressed', 'false'))
+    }
   } finally { submit.disabled = false }
 })
 refreshCampaigns()
@@ -350,6 +424,11 @@ agent.addEventListener('submit', async event => {
   }
 })
 capabilities.then(session => {
+  youtubePublishingEnabled = Boolean(session?.youtube_publishing)
+  updatePublicationMode()
+  if (youtubePublishingEnabled) {
+    document.getElementById('youtube-publishing-status').textContent = 'Automatic upload available for approved campaigns.'
+  }
   document.getElementById('campaign-caption-budget').hidden = !session?.paid_captions
   if (session?.youtube_metrics) {
     youtubeMetricsEnabled = true

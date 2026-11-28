@@ -63,7 +63,14 @@ class PrivateMedia:
 
     def stage_source(self, owner_id, asset_id, *, etag, size, destination):
         obj = self._object(owner_id, asset_id, 'source')
-        result = self.s3.get_object(**obj, IfMatch=etag)
+        self._stage(self.s3.get_object(**obj, IfMatch=etag), size, destination)
+
+    def stage_output(self, owner_id, asset_id, revision, *, size, destination):
+        obj = self._object(owner_id, asset_id, self._output_key(revision))
+        self._stage(self.s3.get_object(**obj), size, destination)
+
+    @staticmethod
+    def _stage(result, size, destination):
         body = result['Body']
         try:
             if result['ContentLength'] != size:

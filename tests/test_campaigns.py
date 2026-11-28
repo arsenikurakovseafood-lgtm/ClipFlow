@@ -1,13 +1,104 @@
 import tempfile
 import unittest
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import Mock
 
 from clipflow.campaigns import Campaigns, Conflict
+from clipflow.insights import Insights
+from clipflow.publishing import process_publication
 from clipflow.queue import Queue
 
 
 class CampaignTests(unittest.TestCase):
+    def test_ten_clips_fit_in_three_days(self):
+        with tempfile.TemporaryDirectory() as root:
+            queue = Queue(Path(root) / 'jobs.sqlite3')
+            campaigns = Campaigns(queue)
+            start = datetime.now(timezone.utc) + timedelta(hours=1)
+            campaign_id = campaigns.create({'name': 'Shorts', 'goal': 'Ten cuts in three days',
+                'channel': 'youtube', 'duration_days': 3, 'cadence_days': 1, 'target_clips': 10,
+                'budget_cents': 0, 'release_start': start.isoformat()})
+            campaigns.transition(campaign_id, 'approve')
+            spec = json.dumps({'campaign_id': campaign_id})
+            for index in range(10):
+                job, _ = queue.reserve(str(index), 'Cut', spec, 4, cost=0, budget=0, quota=100)
+                queue.uploaded(job)
+                queue.finish(queue.claim(), output_bytes=4)
+                campaigns.review_clip(job, 'approved')
+            posts = campaigns.snapshot()['posts']
+            self.assertEqual(len(posts), 10)
+            self.assertEqual(posts[0]['scheduled_at'], start.isoformat())
+            self.assertLess(datetime.fromisoformat(posts[-1]['scheduled_at']), start + timedelta(days=3))
+
+    def test_approved_clips_enter_release_queue_once_and_wait_while_paused(self):
+        with tempfile.TemporaryDirectory() as root:
+            queue = Queue(Path(root) / 'jobs.sqlite3')
+            campaigns = Campaigns(queue)
+            start = datetime.now(timezone.utc) + timedelta(days=2)
+            campaign = campaigns.create({'name': 'Shorts', 'goal': 'Find strong interview clips',
+                'channel': 'youtube', 'duration_days': 7, 'cadence_days': 2,
+                'budget_cents': 0, 'release_start': start.isoformat()})
+            campaigns.transition(campaign, 'approve')
+            spec = json.dumps({'campaign_id': campaign})
+            ids = []
+            for index in range(3):
+                job_id, _ = queue.reserve(str(index), 'Clip', spec, 4, cost=0, budget=0, quota=100)
+                queue.uploaded(job_id)
+                queue.finish(queue.claim(), output_bytes=4)
+                ids.append(job_id)
+            campaigns.review_clip(ids[0], 'rejected')
+            self.assertEqual(campaigns.snapshot()['posts'], [])
+            campaigns.review_clip(ids[1], 'approved')
+            campaigns.review_clip(ids[1], 'approved')
+            campaigns.transition(campaign, 'pause')
+            campaigns.review_clip(ids[2], 'approved')
+            self.assertEqual([post['state'] for post in campaigns.snapshot()['posts']], ['on_hold'])
+            campaigns = Campaigns(Queue(queue.path))
+            campaigns.transition(campaign, 'resume')
+            posts = campaigns.snapshot()['posts']
+            self.assertEqual([post['job_id'] for post in posts], ids[1:])
+            self.assertEqual([post['scheduled_at'] for post in posts],
+                             [start.isoformat(), (start + timedelta(days=2)).isoformat()])
+
+    def test_youtube_publication_requires_confirmation_and_collects_checkpoints(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            queue = Queue(root / 'jobs.sqlite3')
+            campaigns = Campaigns(queue)
+            start = datetime.now(timezone.utc) - timedelta(minutes=1)
+            campaign = campaigns.create({'name': 'Shorts', 'goal': 'Promote an interview',
+                'channel': 'youtube', 'duration_days': 7, 'cadence_days': 1, 'budget_cents': 0,
+                'release_start': start.isoformat(), 'publication_mode': 'youtube', 'publication_consent': True})
+            campaigns.transition(campaign, 'approve')
+            job_id, _ = queue.reserve('fixture', 'Clip', json.dumps({'campaign_id': campaign}),
+                                      4, cost=0, budget=0, quota=100)
+            queue.uploaded(job_id)
+            queue.finish(queue.claim(), output_bytes=4)
+            campaigns.review_clip(job_id, 'approved')
+            publisher = Mock()
+            publisher.upload.side_effect = lambda path, title, approved: 'abcdefghijk' if approved() else None
+            self.assertTrue(process_publication(queue, publisher, root))
+            self.assertEqual(campaigns.snapshot()['posts'][0]['state'], 'uploaded')
+            post_id = campaigns.snapshot()['posts'][0]['id']
+            for privacy, wanted in [('private', 'uploaded'), ('public', 'published')]:
+                with queue.transaction() as db:
+                    db.execute('UPDATE manual_posts SET checked_at=? WHERE id=?', (start.isoformat(), post_id))
+                publisher.inspect.return_value = {'status': {'privacyStatus': privacy, 'uploadStatus': 'processed'},
+                                                  'statistics': {'viewCount': '300', 'likeCount': '31'}}
+                self.assertTrue(process_publication(queue, publisher, root))
+                self.assertEqual(campaigns.snapshot()['posts'][0]['state'], wanted)
+            with queue.transaction() as db:
+                db.execute('UPDATE manual_posts SET reported_at=? WHERE id=?',
+                           ((start - timedelta(hours=24)).isoformat(), post_id))
+            insights = Insights(queue)
+            insights.collect_checkpoint(publisher)
+            with queue.transaction() as db:
+                checkpoint = db.execute('SELECT source,hours,views,likes FROM post_metrics').fetchone()
+            self.assertEqual(tuple(checkpoint), ('youtube', 24, 300, 31))
+            self.assertEqual(publisher.upload.call_count, 1)
+
     def test_review_pause_resume_handoff_and_restart(self):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / 'jobs.sqlite3'

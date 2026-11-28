@@ -1,12 +1,20 @@
-# ClipFlow
+# Reelattice
 
-ClipFlow is an AI Content Autopilot under development. The private owner workspace connects guided campaign planning, batch rendering, clip review, manual publishing and performance tracking.
+Reelattice is a campaign workspace for planning, creating, reviewing and distributing short video. The existing repository, deployment URL and environment variable names retain the ClipFlow identifier.
 
 ## Test the owner workspace in a browser
 
-Open the [ClipFlow owner preview](https://clipflow-h09b.onrender.com/signin) with the existing owner password. In **AI Agent**, prepare and review a draft. Approve the campaign and select **Create clips for this campaign**. Pick **Use the ClipFlow walkthrough sample** to test with built-in footage and prepared subtitles or a sample track. The render worker produces real vertical MP4s. Review and approve the clips in **Content**, then schedule them in **Campaigns**. After publishing externally, record the post URL and checkpoints. **Revenue** separates confirmed cash, pending and estimated amounts. **Settings** controls the global processing pause.
+Open the [Reelattice site](https://clipflow-h09b.onrender.com/welcome) or [sign in to Campaigns](https://clipflow-h09b.onrender.com/signin#campaigns) with the existing owner password. Start from a campaign template or prepare a draft in **AI Agent**. Choose the clip count, hook and release cadence, then select **Approve & add source**. Upload footage or use the built-in walkthrough sample. The worker renders vertical MP4s for review in **Content**. If your plan has a first release time, approving a clip adds it to the release queue automatically; without a release time, schedule the clip in **Campaigns**. After manual publication, record the post URL and actual checkpoints. **Analytics** shows measurements and hook recommendations when there are enough comparable clips. **Revenue** separates confirmed cash, pending and estimated amounts. **Settings** controls the global processing pause.
 
-The published preview has temporary storage and a manual publishing queue. Live OpenAI, durable deployments, social publishing and public billing require the prerequisites documented in [build status](BUILD_STATUS.md).
+The published preview has temporary storage and uses manual publishing. A persistent owner deployment can enable the official YouTube integration described below. Live OpenAI and public billing require the prerequisites documented in [build status](BUILD_STATUS.md).
+
+### Enable YouTube publishing in an authorized persistent owner deployment
+
+Use a Google OAuth project with YouTube Data API enabled. Grant offline access for your channel with `youtube.upload` and `youtube.readonly`, and confirm the project can upload public videos. YouTube restricts uploads from certain unverified projects to private visibility until the project passes an audit.
+
+In the cloud secret store, configure `CLIPFLOW_YOUTUBE_CLIENT_ID`, `CLIPFLOW_YOUTUBE_CLIENT_SECRET`, `CLIPFLOW_YOUTUBE_REFRESH_TOKEN` and `CLIPFLOW_YOUTUBE_CHANNEL_ID` for the worker. Set `CLIPFLOW_YOUTUBE_PUBLISHING=true` only after checking the channel and permissions. A Render deployment also needs a writable mounted disk at `/var/data`. To enable public upload for a campaign, choose **Automatic YouTube upload**, explicitly consent to publishing, add a first release time and approve the clips. The worker uploads only due, approved clips and confirms public processing before marking a post published. If the upload outcome is unknown, check the channel in YouTube Studio before attempting it again. Published posts can supply views, likes and comments at 24 hours, 72 hours and 7 days while the campaign is active. Instagram and TikTok use manual handoff.
+
+[YouTube uploads and audit restrictions](https://developers.google.com/youtube/v3/docs/videos/insert) · [Google OAuth web server guide](https://developers.google.com/identity/protocols/oauth2/web-server)
 
 Run the media checks from a Codex Cloud checkout or from GitHub Actions. The cloud image must provide Python 3, FFmpeg, FFprobe, libx264, libass, and DejaVu Sans.
 

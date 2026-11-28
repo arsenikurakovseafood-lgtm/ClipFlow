@@ -47,8 +47,9 @@ function metricCard(metric) {
   row.className = 'campaign-card'
   const counts = ['views', 'likes', 'comments', 'shares', 'saves', 'clicks', 'conversions']
     .filter(key => typeof metric[key] === 'number').map(key => `${metric[key].toLocaleString()} ${key}`)
+  const checkpoint = metric.source === 'youtube' ? 'YouTube Data API' : 'owner-reported'
   const source = metric.observed_at ? 'YouTube Data API · ' + new Date(metric.observed_at).toLocaleString()
-    : `${providers[metric.channel]} · owner-reported ${metric.hours}h · ${metric.creative}`
+    : `${providers[metric.channel]} · ${checkpoint} · ${metric.hours}h · ${metric.creative}`
   row.append(element('h3', metric.clip), element('p', `${metric.campaign} · ${source}`),
     element('small', counts.join(' · ')))
   return row
@@ -76,11 +77,14 @@ async function refreshInsights() {
     insightList('ledger-entries', data.entries.map(transactionCard), 'No transactions recorded.')
     insightList('performance-list', [...data.metrics, ...data.youtube].map(metricCard), 'Record a published post in Campaigns to add its measurements.')
     const percent = new Intl.NumberFormat('en', {style: 'percent', maximumFractionDigits: 2})
-    insightList('overview-decisions', data.decisions.map(decision => element('p',
+    const decisions = data.decisions.map(decision =>
       `${decision.campaign} · ${decision.hours}h: test another ${decision.candidate} hook. ` +
       `${decision.count} clips averaged ${percent.format(decision.rate)} ${decision.measure} per view, ` +
-      `versus ${percent.format(decision.comparison_rate)} for ${decision.comparison}.`)),
-    'Add comparable checkpoints for two hook formats. Suggestions need at least three clips and 300 views per format.')
+      `versus ${percent.format(decision.comparison_rate)} for ${decision.comparison}.`)
+    for (const list of ['overview-decisions', 'analytics-decisions']) {
+      insightList(list, decisions.map(decision => element('p', decision)),
+        'Add comparable checkpoints for two hook formats. Suggestions need at least three clips and 300 views per format.')
+    }
   } catch {
     insightsStatus.textContent = 'Could not load workspace measurements.'
   }
@@ -120,6 +124,6 @@ async function refreshSettings(paused) {
 
 if (location.hash === '#settings') refreshSettings()
 window.addEventListener('hashchange', () => {
-  if (['#revenue', '#overview', '#settings', ''].includes(location.hash)) refreshInsights()
+  if (['#analytics', '#revenue', '#overview', '#settings', ''].includes(location.hash)) refreshInsights()
   if (location.hash === '#settings') refreshSettings()
 })

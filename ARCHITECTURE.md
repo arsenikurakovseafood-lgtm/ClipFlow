@@ -1,5 +1,11 @@
 # Architecture
 
+## Campaign release and feedback
+
+Reelattice uses the existing owner web process and persistent worker. On clip approval, the campaign transaction schedules the output using the first release time and cadence. The job and release record share an identifier link and retention protects scheduled outputs. The worker checks campaign state, workspace pause, the configured channel and clip approval before transmission. The YouTube upload ID and subsequent public processing status are separate facts. A worker interruption with an uncertain upload outcome requires operator reconciliation before any further upload of that clip.
+
+Official YouTube checkpoints come from the same authenticated channel. Measurements are compared within a campaign, checkpoint and data origin. Current public statistics read on demand and historical checkpoints have distinct meanings. Strategy suggestions are advisory and depend on recorded evidence. Video generation services are outside this release.
+
 ## Integrated owner workflow
 
 The optional VidFetch adapter works on bounded user-selected time ranges.

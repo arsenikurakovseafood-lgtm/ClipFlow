@@ -1,5 +1,11 @@
 # Build status
 
+## Reelattice campaign workspace · 28 November 2026
+
+The new brand and black, lime and white UI cover the landing page, sign-in and owner workspace. Campaign templates supply a starting goal, workflow, hook and publishing cadence. An approved plan can open Studio with its settings filled in. Approved renders in a planned campaign are queued once at the configured cadence. The Analytics view separates owner-reported numbers from official observations and compares hook formats only when the campaign has sufficient comparable measurements.
+
+The cloud browser test rendered and played two vertical MP4s from uploaded footage with fixture subtitles and verified automatic insertion into the release schedule after approval. Backend tests used a simulated YouTube response to check that an uploaded private video is never marked published and that a confirmed public video supplies a checkpoint. This does not establish a live Google connection. The deployed owner preview uses manual handoff and temporary storage. Live YouTube source conversion, public publishing and automated analytics against actual channels need independent verification. TikTok and Instagram publishing automation, external generative video, automatic strategy changes and public SaaS billing remain unavailable.
+
 ## Built-in YouTube conversion
 
 The Render owner preview defaults to an in-worker yt-dlp and FFmpeg converter.

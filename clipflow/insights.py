@@ -1,4 +1,4 @@
-"""Owner-reported analytics and a EUR cash ledger for the owner workspace."""
+"""Campaign checkpoints and a EUR cash ledger for the owner workspace."""
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -33,6 +33,48 @@ class Insights:
             db.execute("""CREATE TABLE IF NOT EXISTS youtube_reads (
                 post_id TEXT NOT NULL, requested_at TEXT NOT NULL
             )""")
+            if 'source' not in {row['name'] for row in db.execute('PRAGMA table_info(post_metrics)')}:
+                db.execute("ALTER TABLE post_metrics ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'")
+            db.execute("""CREATE TABLE IF NOT EXISTS youtube_checkpoint_reads (
+                post_id TEXT NOT NULL, hours INTEGER NOT NULL, attempted_at TEXT NOT NULL,
+                PRIMARY KEY (post_id, hours)
+            )""")
+
+    def collect_checkpoint(self, publisher, now=None):
+        now = datetime.now(timezone.utc) if now is None else now
+        with self.queue.transaction() as db:
+            if workloads_paused(db):
+                return
+            post = db.execute("""SELECT p.id,p.provider_id,w.hours
+                FROM manual_posts p JOIN campaigns c ON c.id=p.campaign_id
+                CROSS JOIN (SELECT 24 AS hours UNION ALL SELECT 72 UNION ALL SELECT 168) w
+                LEFT JOIN post_metrics m ON m.post_id=p.id AND m.hours=w.hours
+                LEFT JOIN youtube_checkpoint_reads r ON r.post_id=p.id AND r.hours=w.hours
+                WHERE p.state='published' AND p.provider_id IS NOT NULL AND c.state='active' AND m.post_id IS NULL
+                AND julianday(?) BETWEEN julianday(p.reported_at)+w.hours/24.0
+                    AND julianday(p.reported_at)+(w.hours+12)/24.0
+                AND (r.attempted_at IS NULL OR r.attempted_at<=?)
+                ORDER BY p.reported_at,w.hours LIMIT 1""",
+                (now.isoformat(), (now - timedelta(minutes=30)).isoformat())).fetchone()
+            if not post:
+                return
+            db.execute("""INSERT INTO youtube_checkpoint_reads VALUES (?,?,?) ON CONFLICT(post_id,hours)
+                DO UPDATE SET attempted_at=excluded.attempted_at""", (post['id'], post['hours'], now.isoformat()))
+        try:
+            video = publisher.inspect(post['provider_id'])
+            if video['status']['privacyStatus'] != 'public':
+                return
+            stats = video['statistics']
+            counts = [int(stats[field]) if field in stats else None
+                      for field in ('viewCount', 'likeCount', 'commentCount')]
+            if counts[0] is None or any(value is not None and not 0 <= value <= 10**14 for value in counts):
+                return
+        except (OSError, KeyError, TypeError, ValueError):
+            return
+        with self.queue.transaction() as db:
+            db.execute("""INSERT OR IGNORE INTO post_metrics
+                (post_id,hours,views,likes,comments,recorded_at,source) VALUES (?,?,?,?,?,?,'youtube')""",
+                (post['id'], post['hours'], *counts, now.isoformat()))
 
     def read_youtube(self, post_id, api_key, opener=None):
         if not api_key:
@@ -64,6 +106,7 @@ class Insights:
         cutoff = datetime.fromtimestamp(now, timezone.utc) - timedelta(days=29)
         with self.queue.transaction() as db:
             db.execute('DELETE FROM youtube_metrics WHERE observed_at<=?', (cutoff.isoformat(),))
+            db.execute("DELETE FROM post_metrics WHERE source='youtube' AND recorded_at<=?", (cutoff.isoformat(),))
 
     def record_metrics(self, post_id, data):
         hours = data.get('hours')
@@ -73,12 +116,15 @@ class Insights:
                        for value in counts)):
             raise ValueError('Select a checkpoint and enter valid platform counts. Views are required.')
         with self.queue.transaction() as db:
-            if not db.execute('SELECT 1 FROM manual_posts WHERE id=? AND post_url IS NOT NULL', (post_id,)).fetchone():
-                raise Conflict('Record the actual post URL before adding metrics')
-            db.execute("""INSERT INTO post_metrics VALUES (?,?,?,?,?,?,?,?,?,?)
+            post = db.execute('SELECT delivery FROM manual_posts WHERE id=? AND post_url IS NOT NULL', (post_id,)).fetchone()
+            if not post or post['delivery'] != 'manual':
+                raise Conflict('Record a manually published post URL before adding owner-reported metrics')
+            db.execute("""INSERT INTO post_metrics
+                (post_id,hours,views,likes,comments,shares,saves,clicks,conversions,recorded_at) VALUES (?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(post_id,hours) DO UPDATE SET views=excluded.views, likes=excluded.likes,
                 comments=excluded.comments, shares=excluded.shares, saves=excluded.saves,
-                clicks=excluded.clicks, conversions=excluded.conversions, recorded_at=excluded.recorded_at""",
+                clicks=excluded.clicks, conversions=excluded.conversions,
+                recorded_at=excluded.recorded_at,source='manual'""",
                 (post_id, hours, *counts, datetime.now(timezone.utc).isoformat()))
 
     def add_entry(self, data):
@@ -136,9 +182,9 @@ def recommendations(metrics):
     # A record only competes with the same campaign, channel and measurement window.
     groups = {}
     for row in metrics:
-        groups.setdefault((row['campaign_id'], row['hours']), []).append(row)
+        groups.setdefault((row['campaign_id'], row['hours'], row.get('source', 'manual')), []).append(row)
     decisions = []
-    for (_, hours), rows in groups.items():
+    for (_, hours, source), rows in groups.items():
         cohorts = {}
         for row in rows:
             cohorts.setdefault(row['creative'], []).append(row)
@@ -146,7 +192,8 @@ def recommendations(metrics):
                      if len(clips) >= 3 and sum(clip['views'] for clip in clips) >= 300}
         if len(available) < 2:
             continue
-        measure = next((key for key in ('conversions', 'clicks')
+        fields = ('likes',) if source == 'youtube' else ('conversions', 'clicks')
+        measure = next((key for key in fields
                         if all(clip[key] is not None for clips in available.values() for clip in clips)), None)
         if not measure:
             continue

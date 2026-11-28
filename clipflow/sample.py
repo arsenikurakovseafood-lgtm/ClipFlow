@@ -24,7 +24,7 @@ def stage_sample(folder, mode, *, authored_captions=True):
                 part = f'part-{index}.mp4'
                 parts.append(part)
                 filters = (f'drawbox=x=35:y=159:w=290:h=4:color=0x{color}:t=fill,'
-                           f'drawtext=fontfile={FONT}:text=CLIPFLOW:fontsize=14:fontcolor=0x{color}:x=35:y=126,'
+                           f'drawtext=fontfile={FONT}:text=REELATTICE:fontsize=14:fontcolor=0x{color}:x=35:y=126,'
                            f'drawtext=fontfile={FONT}:text={title}:fontsize=20:fontcolor=white:x=35:y=220')
                 run('ffmpeg', '-nostdin', '-v', 'error', '-filter_threads', '1', '-f', 'lavfi',
                     '-i', 'color=c=0x0B0D19:s=360x640:r=30', '-f', 'lavfi',

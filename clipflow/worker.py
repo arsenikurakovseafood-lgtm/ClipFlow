@@ -9,10 +9,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from clipflow.batch import BATCH_OUTPUT_BYTES, PALETTES, BatchError, stage_batch
+from clipflow.campaigns import Campaigns
 from clipflow.converter import VidFetch
 from clipflow.builtin_converter import BuiltinConverter, enabled as builtin_youtube_enabled
 from clipflow.insights import Insights
 from clipflow.planner import Plans, planner_budget
+from clipflow.publishing import YouTubePublisher, process_publication
 from clipflow.queue import Queue, source_retention_seconds
 from clipflow.r2 import PrivateMedia
 from clipflow.render import Cue, probe, render
@@ -165,6 +167,9 @@ def main():
     root = parser.parse_args().root.resolve()
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     queue = Queue(root / 'jobs.sqlite3')
+    publisher = YouTubePublisher.configured()
+    if publisher:
+        Campaigns(queue)
     transcriber = Transcriber.configured() or (CloudSpeech() if CloudSpeech.available() else None)
     builtin = builtin_youtube_enabled()
     vidfetch = None if builtin else VidFetch.configured()
@@ -179,6 +184,7 @@ def main():
     source_seconds = source_retention_seconds()
     output_seconds = max(1, int(os.environ.get('CLIPFLOW_OUTPUT_RETENTION_HOURS', '168'))) * 3600
     next_sweep = 0
+    next_checkpoint = 0
     while True:
         now = time.time()
         if now >= next_sweep:
@@ -189,6 +195,11 @@ def main():
                 for job_id, remote_id in queue.pending_converter_cleanup():
                     vidfetch.release(queue, job_id, remote_id)
             next_sweep = now + 300
+        if publisher:
+            process_publication(queue, publisher, root, media, owner_id)
+            if now >= next_checkpoint:
+                insights.collect_checkpoint(publisher)
+                next_checkpoint = now + 60
         job = queue.claim()
         if job:
             work(root, queue, job, transcriber, media, owner_id, converter)
