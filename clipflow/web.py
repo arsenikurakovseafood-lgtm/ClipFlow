@@ -17,11 +17,12 @@ from clipflow.builtin_converter import enabled as builtin_youtube_enabled
 from clipflow.sample import SAMPLE_SECONDS
 from clipflow.insights import Insights
 from clipflow.planner import Plans, planner_budget
-from clipflow.publishing import publishing_enabled
+from clipflow.publishing import YouTubePublisher, publishing_enabled
 from clipflow.queue import Limit, Queue
 from clipflow.r2 import BUNDLE_MIME, MEDIA_TYPES, PrivateMedia
 from clipflow.render import MAX_OUTPUT_BYTES
 from clipflow.youtube import SOURCE_LIMIT, youtube_url
+from clipflow.youtube_connection import CALLBACK, STATE_SECONDS, YouTubeConnection, flow_cookie
 from clipflow.transcription import SPEECH_MODELS, enabled as transcription_enabled, monthly_budget
 
 MAX_UPLOAD = 25 * 1024 * 1024
@@ -32,6 +33,39 @@ WEB = Path(__file__).with_name('ui')
 
 
 class OwnerAPI(BaseHTTPRequestHandler):
+    def log_request(self, code='-', size='-'):
+        if urlsplit(self.path).path == CALLBACK:
+            return self.log_message('YouTube OAuth callback %s %s', str(code), str(size))
+        super().log_request(code, size)
+
+    def youtube_status(self):
+        connection = getattr(self.server, 'youtube_connection', None)
+        if connection and connection.publisher():
+            return 'connected'
+        if connection:
+            return 'connect_required'
+        if getattr(self.server, 'youtube_worker_configured', False):
+            return 'configured'
+        if os.environ.get('CLIPFLOW_INTERNAL_RENDER_PREVIEW') == 'true' and not os.path.ismount('/var/data'):
+            return 'persistent_host_required'
+        return 'provider_setup_required'
+
+    def youtube_callback(self, query):
+        reason = 'YouTube was not connected. Return to Accounts and start again.'
+        connection = getattr(self.server, 'youtube_connection', None)
+        if connection:
+            try:
+                arguments = parse_qs(query, max_num_fields=12) if len(query) <= 4096 else {}
+                connection.complete(arguments.get('code', [''])[0], arguments.get('state', [''])[0],
+                                    self.headers.get('Cookie', ''))
+                reason = 'YouTube channel connected. You can now select automatic publishing in Campaigns.'
+            except (KeyError, OSError, TypeError, ValueError):
+                pass
+        return self.reply(200, ('<!doctype html><html lang="en"><meta charset="utf-8"><title>YouTube connection</title>'
+                                '<link rel="stylesheet" href="/reelattice.css"><main><h1>YouTube connection</h1>'
+                                f'<p>{reason}</p><a href="/#accounts">Return to Accounts</a></main>').encode(),
+                          'text/html; charset=utf-8', headers=[('Set-Cookie', flow_cookie())])
+
     def setup(self):
         super().setup()
         self.connection.settimeout(30)
@@ -101,6 +135,8 @@ class OwnerAPI(BaseHTTPRequestHandler):
 
     def do_GET(self):
         url = urlsplit(self.path)
+        if url.path == CALLBACK:
+            return self.youtube_callback(url.query)
         if url.path == '/healthz':
             revision = os.environ.get('RENDER_GIT_COMMIT', '')
             result = {'ok': True}
@@ -111,13 +147,15 @@ class OwnerAPI(BaseHTTPRequestHandler):
         if url.path not in ('/signin', '/signin.js', '/app.css', '/reelattice.css', '/reelattice-hero.webp', '/welcome') and not self.authenticate(url.path):
             return
         if url.path == '/api/session':
+            youtube = self.youtube_status()
             return self.reply(200, {'sign_out': self.server.auth is not None,
                                     'automatic_captions': self.server.transcription_enabled,
                                     'paid_captions': monthly_budget() > 0,
                                     'direct_upload': self.server.media is not None,
                                     'ai_planner': planner_budget() > 0,
                                     'youtube_metrics': bool(os.environ.get('CLIPFLOW_YOUTUBE_DATA_API_KEY')),
-                                    'youtube_publishing': publishing_enabled(),
+                                    'youtube_publishing': youtube in ('configured', 'connected'),
+                                    'youtube_connection': youtube,
                                     'youtube_converter': builtin_youtube_enabled() or monthly_limit() > 0,
                                     'upload_limit_mib': 8 if isinstance(self.server.auth, PreviewAuth) else 25,
                                     'clip_limit_seconds': 10 if isinstance(self.server.auth, PreviewAuth) else 60})
@@ -222,7 +260,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
             if self.path == '/api/plans':
                 return self.reply(202, {'id': self.server.plans.request(data.get('goal'), planner_budget())})
             if self.path == '/api/campaigns':
-                if data.get('publication_mode') == 'youtube' and not publishing_enabled():
+                if data.get('publication_mode') == 'youtube' and self.youtube_status() not in ('configured', 'connected'):
                     raise Conflict('Automatic YouTube publishing is not configured')
                 return self.reply(201, {'id': self.server.campaigns.create(data)})
             if self.path == '/api/settings':
@@ -269,6 +307,16 @@ class OwnerAPI(BaseHTTPRequestHandler):
             return self.session_request()
         if not self.authenticate(self.path):
             return
+        if self.path in ('/api/accounts/youtube/connect', '/api/accounts/youtube/disconnect'):
+            if self.headers.get('Sec-Fetch-Site') not in (None, 'same-origin'):
+                return self.reply(403, {'error': 'Cross-origin request refused'})
+            connection = getattr(self.server, 'youtube_connection', None)
+            if not connection or not self.server.auth:
+                return self.reply(409, {'error': 'YouTube connection is unavailable on this deployment'})
+            if self.path.endswith('/disconnect'):
+                return self.reply(200, {'revoked': connection.disconnect()})
+            url, state = connection.begin()
+            return self.reply(200, {'url': url}, headers=[('Set-Cookie', flow_cookie(state, STATE_SECONDS))])
         if self.path in ('/api/plans', '/api/settings') or self.path.startswith(('/api/campaigns', '/api/manual-posts', '/api/clips/', '/api/ledger')):
             return self.campaign_request()
         if self.path == '/api/batches':
@@ -502,6 +550,9 @@ class OwnerAPI(BaseHTTPRequestHandler):
         if self.headers.get('Transfer-Encoding'):
             return self.reply(415, {'error': 'Use the replacement form in Content'})
         url = unquote(self.headers.get('X-Replacement-URL', '')).strip()
+        source_kind = self.headers.get('X-Replacement-Source')
+        if source_kind not in (None, 'original', 'segment'):
+            return self.reply(400, {'error': 'Choose the full original or the already trimmed segment.'})
         if self.server.media and not url:
             return self.reply(400, {'error': 'Use a direct R2 file link for this batch or start a new private upload in Studio.'})
         try:
@@ -516,12 +567,13 @@ class OwnerAPI(BaseHTTPRequestHandler):
             return self.reply(400, {'error': 'Choose an MP4, MOV or WebM up to 8 MiB, or enter a direct Cloudflare R2 file link.'})
 
         queue = self.server.queue
+        original = None if source_kind is None else source_kind == 'original'
         folder = self.server.root / job_id
         unavailable = {'error': 'This batch is no longer available for source replacement. Open Studio to start a new batch.'}
         if not queue.can_replace_batch_source(job_id) or not folder.is_dir():
             return self.reply(409, unavailable)
         if url:
-            replaced = queue.replace_batch_source(job_id, folder, source_url=url)
+            replaced = queue.replace_batch_source(job_id, folder, source_url=url, original=original)
         else:
             staged = folder / 'source-replacement'
             try:
@@ -540,7 +592,7 @@ class OwnerAPI(BaseHTTPRequestHandler):
                             raise OSError('Incomplete upload')
                         target.write(block)
                         remaining -= len(block)
-                replaced = queue.replace_batch_source(job_id, folder, staged=staged)
+                replaced = queue.replace_batch_source(job_id, folder, staged=staged, original=original)
             except OSError:
                 return self.reply(400, {'error': 'Upload was interrupted. Select the video and try again.'})
             finally:
@@ -599,6 +651,9 @@ def main():
     server.queue = Queue(server.root / 'jobs.sqlite3')
     if server.auth:
         server.queue.bind_owner(server.owner_id)
+    server.youtube_connection = YouTubeConnection.configured(server.queue) if server.auth else None
+    server.youtube_worker_configured = bool(publishing_enabled() and (
+        YouTubePublisher.configured() or os.environ.get('CLIPFLOW_YOUTUBE_WORKER_CONFIGURED') == 'true'))
     server.campaigns = Campaigns(server.queue)
     server.insights = Insights(server.queue)
     server.plans = Plans(server.queue)

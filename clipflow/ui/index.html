@@ -169,6 +169,7 @@
 <label>First release<input name="release_start" type="datetime-local"><small>Optional. Approval adds clips to this schedule.</small></label>
 </div>
 <label>Publishing mode<select name="publication_mode"><option value="manual">Manual handoff</option><option value="youtube" disabled>Automatic YouTube upload</option></select></label>
+<p id="publication-availability" hidden><span></span> <a href="#accounts">Open Accounts</a></p>
 <label id="youtube-consent" class="check-option" hidden><input name="publication_consent" type="checkbox"> Publish each clip I approve to the connected YouTube channel at its scheduled time.</label>
 <details id="campaign-creative"><summary>Hook examples and creative direction</summary>
 <div class="creative-fields">
@@ -228,7 +229,7 @@
 <div class="account-list">
 <article><h2>Instagram</h2><p>Manual publishing · connection unavailable</p><a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer">Open Instagram</a></article>
 <article><h2>TikTok</h2><p>Manual publishing · connection unavailable</p><a href="https://www.tiktok.com/upload" target="_blank" rel="noopener noreferrer">Open TikTok Upload</a></article>
-<article><h2>YouTube</h2><p id="youtube-publishing-status">Manual handoff · automatic publishing disconnected</p><p id="youtube-analytics-status">Public statistics require a configured YouTube Data API key.</p><a href="https://studio.youtube.com/" target="_blank" rel="noopener noreferrer">Open YouTube Studio</a></article>
+<article><h2>YouTube</h2><p id="youtube-publishing-status">Checking publishing availability…</p><p id="youtube-analytics-status">Public statistics require a configured YouTube Data API key.</p><button id="youtube-connect" type="button" hidden>Connect YouTube</button><button id="youtube-disconnect" type="button" hidden>Disconnect YouTube</button><p id="youtube-connect-status" role="status"></p><a href="https://studio.youtube.com/" target="_blank" rel="noopener noreferrer">Open YouTube Studio</a></article>
 </div>
 </section>
 <section id="settings" data-screen hidden>

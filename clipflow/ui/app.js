@@ -41,8 +41,10 @@ function sourceRecovery(job) {
     <small role="status"></small>`
   const button = form.querySelector('button')
   const status = form.querySelector('[role=status]')
-  if (job.trim_end !== null && !job.trim_locally) {
-    form.querySelector('small').textContent = 'Use an MP4 already cut to the selected timecodes. Your track and settings are saved.'
+  if (job.trim_end !== null) {
+    const range = document.createElement('label')
+    range.innerHTML = 'Replacement contains<select name="source_kind"><option value="original">Full original · cut it on the server</option><option value="segment">Already cut to the selected range</option></select>'
+    form.querySelector('small').after(range)
   }
   const video = form.elements.video
   if (!job.file_replacement) video.closest('label').hidden = true
@@ -62,6 +64,7 @@ function sourceRecovery(job) {
       const options = file
         ? {body: file, headers: {'Content-Type': mediaTypes[file.name.split('.').pop().toLowerCase()] || file.type}}
         : {headers: {'X-Replacement-URL': encodeURIComponent(url)}}
+      if (form.elements.source_kind) options.headers['X-Replacement-Source'] = form.elements.source_kind.value
       const response = await fetch('/api/batches/' + job.id + '/replace-source', {method: 'POST', ...options})
       if (!response.ok) throw new Error((await response.json()).error)
       await refresh()

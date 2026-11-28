@@ -11,6 +11,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+      - name: Set up the OAuth test dependency
+        run: |
+          python3 -m venv "$RUNNER_TEMP/clipflow-test-venv"
+          "$RUNNER_TEMP/clipflow-test-venv/bin/python" -m pip install cryptography==50.0.0
+          echo "$RUNNER_TEMP/clipflow-test-venv/bin" >> "$GITHUB_PATH"
       - run: python3 -m unittest discover -s tests -v
       - name: Install pinned browser test library
         run: npm install --no-save --no-package-lock playwright@1.62.1

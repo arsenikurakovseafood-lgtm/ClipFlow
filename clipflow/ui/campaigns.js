@@ -5,6 +5,14 @@ let campaignSignature = ''
 let workspaceCampaigns = []
 let youtubeMetricsEnabled = false
 let youtubePublishingEnabled = false
+let youtubeConnection = 'provider_setup_required'
+const youtubeConnect = document.getElementById('youtube-connect')
+const youtubeDisconnect = document.getElementById('youtube-disconnect')
+const unavailableReasons = {
+  persistent_host_required: 'Automatic publishing requires an always-on deployment with persistent storage.',
+  provider_setup_required: 'Automatic publishing requires the workspace owner to configure Google OAuth.',
+  connect_required: 'Connect your YouTube channel to enable automatic publishing.'
+}
 
 const templates = {
   shorts: {name: 'Short clips campaign', goal: 'Find standalone moments that make viewers want to watch the full video.',
@@ -20,6 +28,9 @@ const templates = {
 
 function updatePublicationMode() {
   const available = youtubePublishingEnabled && campaignForm.elements.channel.value === 'youtube'
+  const notice = document.getElementById('publication-availability')
+  notice.hidden = campaignForm.elements.channel.value !== 'youtube' || available
+  notice.querySelector('span').textContent = unavailableReasons[youtubeConnection] || ''
   const mode = campaignForm.elements.publication_mode
   mode.options[1].disabled = !available
   if (!available) mode.value = 'manual'
@@ -423,9 +434,51 @@ agent.addEventListener('submit', async event => {
     button.disabled = false
   }
 })
+youtubeConnect.addEventListener('click', async () => {
+  youtubeConnect.disabled = true
+  const status = document.getElementById('youtube-connect-status')
+  try {
+    const response = await fetch('/api/accounts/youtube/connect', {method: 'POST'})
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.error)
+    location.assign(result.url)
+  } catch (error) {
+    status.textContent = error.message
+    youtubeConnect.disabled = false
+  }
+})
+youtubeDisconnect.addEventListener('click', async () => {
+  youtubeDisconnect.disabled = true
+  const status = document.getElementById('youtube-connect-status')
+  try {
+    const response = await fetch('/api/accounts/youtube/disconnect', {method: 'POST'})
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.error)
+    youtubeConnection = 'connect_required'
+    youtubePublishingEnabled = false
+    youtubeDisconnect.hidden = true
+    youtubeConnect.textContent = 'Connect YouTube'
+    document.getElementById('youtube-publishing-status').textContent = unavailableReasons.connect_required
+    document.getElementById('youtube-analytics-status').textContent = youtubeMetricsEnabled
+      ? 'Public YouTube statistics available for recorded posts.' : 'Automatic checkpoints are paused.'
+    status.textContent = result.revoked ? 'Account disconnected. Pending uploads are paused.'
+      : 'Account disconnected here. Remove Reelattice in your Google Account to revoke access there.'
+    updatePublicationMode()
+  } catch (error) {
+    status.textContent = error.message
+  } finally {
+    youtubeDisconnect.disabled = false
+  }
+})
 capabilities.then(session => {
+  youtubeConnection = session?.youtube_connection || 'provider_setup_required'
   youtubePublishingEnabled = Boolean(session?.youtube_publishing)
+  youtubeConnect.hidden = !['connect_required', 'connected'].includes(youtubeConnection)
+  youtubeDisconnect.hidden = youtubeConnection !== 'connected'
+  if (youtubeConnection === 'connected') youtubeConnect.textContent = 'Reconnect YouTube'
   updatePublicationMode()
+  document.getElementById('youtube-publishing-status').textContent = unavailableReasons[youtubeConnection] ||
+    'Automatic upload available for approved campaigns.'
   if (youtubePublishingEnabled) {
     document.getElementById('youtube-publishing-status').textContent = 'Automatic upload available for approved campaigns.'
     document.getElementById('youtube-analytics-status').textContent = 'Automatic 24h, 72h and 7-day checkpoints for confirmed uploads.'

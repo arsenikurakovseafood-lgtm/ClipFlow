@@ -7,7 +7,8 @@ import time
 
 from clipflow.auth import PreviewAuth
 from clipflow.converter import VidFetch
-from clipflow.publishing import SECRET_NAMES, YouTubePublisher
+from clipflow.publishing import SECRET_NAMES, YouTubePublisher, publishing_enabled
+from clipflow.youtube_connection import CONFIG as YOUTUBE_OAUTH_SETTINGS
 
 DATA = '/var/lib/clipflow'
 PERSISTENT_DATA = '/var/data'
@@ -19,8 +20,15 @@ def service_settings():
     env['CLIPFLOW_INTERNAL_RENDER_PREVIEW'] = 'true'
     path = PERSISTENT_DATA if os.path.ismount(PERSISTENT_DATA) and os.access(PERSISTENT_DATA, os.W_OK) else DATA
     owner_env, worker_env = dict(env), dict(env)
+    if path == PERSISTENT_DATA and publishing_enabled() and all(
+            os.environ.get('CLIPFLOW_YOUTUBE_' + name) for name in YOUTUBE_OAUTH_SETTINGS):
+        owner_env['CLIPFLOW_YOUTUBE_PUBLISHING'] = worker_env['CLIPFLOW_YOUTUBE_PUBLISHING'] = 'true'
+        for name in YOUTUBE_OAUTH_SETTINGS:
+            key = 'CLIPFLOW_YOUTUBE_' + name
+            owner_env[key] = worker_env[key] = os.environ[key]
     if path == PERSISTENT_DATA and YouTubePublisher.configured():
         owner_env['CLIPFLOW_YOUTUBE_PUBLISHING'] = worker_env['CLIPFLOW_YOUTUBE_PUBLISHING'] = 'true'
+        owner_env['CLIPFLOW_YOUTUBE_WORKER_CONFIGURED'] = 'true'
         for name in SECRET_NAMES:
             key = 'CLIPFLOW_YOUTUBE_' + name
             worker_env[key] = os.environ[key]
