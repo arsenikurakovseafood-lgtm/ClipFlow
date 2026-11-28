@@ -61,6 +61,8 @@ class CampaignTests(unittest.TestCase):
             self.assertEqual([post['job_id'] for post in posts], ids[1:])
             self.assertEqual([post['scheduled_at'] for post in posts],
                              [start.isoformat(), (start + timedelta(days=2)).isoformat()])
+            campaigns.review_clip(ids[2], 'rejected')
+            self.assertEqual([post['job_id'] for post in campaigns.snapshot()['posts']], ids[1:2])
 
     def test_youtube_publication_requires_confirmation_and_collects_checkpoints(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -81,6 +83,8 @@ class CampaignTests(unittest.TestCase):
             publisher.upload.side_effect = lambda path, title, approved: 'abcdefghijk' if approved() else None
             self.assertTrue(process_publication(queue, publisher, root))
             self.assertEqual(campaigns.snapshot()['posts'][0]['state'], 'uploaded')
+            with self.assertRaises(Conflict):
+                campaigns.review_clip(job_id, 'rejected')
             post_id = campaigns.snapshot()['posts'][0]['id']
             for privacy, wanted in [('private', 'uploaded'), ('public', 'published')]:
                 with queue.transaction() as db:

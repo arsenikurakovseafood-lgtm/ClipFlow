@@ -107,6 +107,7 @@ class Insights:
         with self.queue.transaction() as db:
             db.execute('DELETE FROM youtube_metrics WHERE observed_at<=?', (cutoff.isoformat(),))
             db.execute("DELETE FROM post_metrics WHERE source='youtube' AND recorded_at<=?", (cutoff.isoformat(),))
+            db.execute('DELETE FROM youtube_checkpoint_reads WHERE attempted_at<=?', (cutoff.isoformat(),))
 
     def record_metrics(self, post_id, data):
         hours = data.get('hours')
@@ -184,7 +185,7 @@ def recommendations(metrics):
     for row in metrics:
         groups.setdefault((row['campaign_id'], row['hours'], row.get('source', 'manual')), []).append(row)
     decisions = []
-    for (_, hours, source), rows in groups.items():
+    for (campaign_id, hours, source), rows in groups.items():
         cohorts = {}
         for row in rows:
             cohorts.setdefault(row['creative'], []).append(row)
@@ -202,7 +203,8 @@ def recommendations(metrics):
         leader, runner_up = sorted(rates, key=rates.get, reverse=True)[:2]
         if rates[leader] <= rates[runner_up] or sum(clip[measure] for clip in available[leader]) < 5:
             continue
-        decisions.append({'campaign': rows[0]['campaign'], 'hours': hours, 'measure': measure,
+        decisions.append({'campaign_id': campaign_id, 'campaign': rows[0]['campaign'],
+                          'hours': hours, 'measure': measure,
                           'candidate': leader, 'comparison': runner_up, 'count': len(available[leader]),
                           'rate': rates[leader], 'comparison_rate': rates[runner_up]})
     return decisions[:20]

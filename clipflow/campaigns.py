@@ -70,11 +70,16 @@ class Campaigns:
             changed = db.execute("""UPDATE jobs SET review=? WHERE id=? AND state='ready'
                 AND (?='approved' OR NOT EXISTS (SELECT 1 FROM manual_posts p JOIN campaigns c
                 ON c.id=p.campaign_id WHERE p.job_id=jobs.id AND
-                (p.state='handed_off' OR c.state<>'stopped')))""", (review, job_id, review)).rowcount
+                (p.state<>'scheduled' OR (c.state<>'stopped' AND c.release_start IS NULL))))""",
+                                 (review, job_id, review)).rowcount
             if not changed:
-                raise Conflict('Only ready clips can be reviewed. Scheduled or handed-off clips cannot be rejected.')
+                raise Conflict('Only ready clips can be reviewed. Publishing already started or the clip was scheduled manually.')
             if review == 'approved':
                 self.schedule_on_approval(db, job_id)
+            else:
+                db.execute("""DELETE FROM manual_posts WHERE job_id=? AND state='scheduled'
+                    AND campaign_id IN (SELECT id FROM campaigns WHERE release_start IS NOT NULL)""", (job_id,))
+                db.execute('UPDATE jobs SET hold_until=0 WHERE id=?', (job_id,))
             audit(db, 'clip_' + review, job_id)
 
     @staticmethod

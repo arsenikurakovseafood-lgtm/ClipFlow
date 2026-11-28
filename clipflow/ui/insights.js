@@ -77,12 +77,25 @@ async function refreshInsights() {
     insightList('ledger-entries', data.entries.map(transactionCard), 'No transactions recorded.')
     insightList('performance-list', [...data.metrics, ...data.youtube].map(metricCard), 'Record a published post in Campaigns to add its measurements.')
     const percent = new Intl.NumberFormat('en', {style: 'percent', maximumFractionDigits: 2})
-    const decisions = data.decisions.map(decision =>
-      `${decision.campaign} · ${decision.hours}h: test another ${decision.candidate} hook. ` +
-      `${decision.count} clips averaged ${percent.format(decision.rate)} ${decision.measure} per view, ` +
-      `versus ${percent.format(decision.comparison_rate)} for ${decision.comparison}.`)
     for (const list of ['overview-decisions', 'analytics-decisions']) {
-      insightList(list, decisions.map(decision => element('p', decision)),
+      const cards = data.decisions.map(decision => {
+        const card = element('article')
+        card.className = 'campaign-card'
+        card.append(element('h3', `${decision.campaign} · test a ${decision.candidate} hook`),
+          element('p', `At ${decision.hours}h, ${decision.count} clips averaged ${percent.format(decision.rate)} ` +
+            `${decision.measure} per view, versus ${percent.format(decision.comparison_rate)} for ${decision.comparison}.`))
+        const example = [...document.querySelectorAll('[data-hook]')].find(button => button.dataset.hook === decision.candidate)
+        if (list === 'analytics-decisions' && (example || decision.candidate === 'standard')) {
+          card.append(action('Prepare next batch', async () => {
+            await refreshCampaigns()
+            const campaign = workspaceCampaigns.find(item => item.id === decision.campaign_id && item.state === 'active')
+            if (campaign) openCampaignStudio({...campaign, hook_format: decision.candidate, hook_text: example?.textContent || ''})
+            else card.append(element('p', 'The campaign must be active to prepare another batch.'))
+          }))
+        }
+        return card
+      })
+      insightList(list, cards,
         'Add comparable checkpoints for two hook formats. Suggestions need at least three clips and 300 views per format.')
     }
   } catch {

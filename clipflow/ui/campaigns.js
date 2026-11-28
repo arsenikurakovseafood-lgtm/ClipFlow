@@ -428,11 +428,12 @@ capabilities.then(session => {
   updatePublicationMode()
   if (youtubePublishingEnabled) {
     document.getElementById('youtube-publishing-status').textContent = 'Automatic upload available for approved campaigns.'
+    document.getElementById('youtube-analytics-status').textContent = 'Automatic 24h, 72h and 7-day checkpoints for confirmed uploads.'
   }
   document.getElementById('campaign-caption-budget').hidden = !session?.paid_captions
   if (session?.youtube_metrics) {
     youtubeMetricsEnabled = true
-    document.getElementById('youtube-analytics-status').textContent = 'Public YouTube statistics available for recorded posts.'
+    if (!youtubePublishingEnabled) document.getElementById('youtube-analytics-status').textContent = 'Public YouTube statistics available for recorded posts.'
     campaignSignature = ''
     refreshCampaigns()
   }
