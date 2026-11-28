@@ -160,11 +160,14 @@
 <form id="campaign-form">
 <label>Name<input name="name" maxlength="80" required></label>
 <label>Content goal<textarea name="goal" maxlength="1500" required placeholder="Reach new listeners with weekly highlights from my approved footage"></textarea></label>
+<div class="campaign-pair">
 <label>Publishing destination<select name="channel"><option value="youtube">YouTube Shorts</option><option value="instagram">Instagram Reels</option><option value="tiktok">TikTok</option></select></label>
 <label>Content workflow<select name="workflow"><option value="visual">Quick clips</option><option value="speech">Podcast highlights</option><option value="music">Music promos</option><option value="original">Original promo</option></select></label>
+</div>
+<div class="campaign-pair">
 <label>Target clips<input name="target_clips" type="number" min="1" max="10" value="3" required></label>
-<label>First release <small>Optional. Approving a clip adds it to this schedule.</small>
-<input name="release_start" type="datetime-local"></label>
+<label>First release<input name="release_start" type="datetime-local"><small>Optional. Approval adds clips to this schedule.</small></label>
+</div>
 <label>Publishing mode<select name="publication_mode"><option value="manual">Manual handoff</option><option value="youtube" disabled>Automatic YouTube upload</option></select></label>
 <label id="youtube-consent" class="check-option" hidden><input name="publication_consent" type="checkbox"> Publish each clip I approve to the connected YouTube channel at its scheduled time.</label>
 <details id="campaign-creative"><summary>Hook examples and creative direction</summary>

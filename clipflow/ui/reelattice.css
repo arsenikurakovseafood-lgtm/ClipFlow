@@ -87,6 +87,9 @@ button, .workspace-cta { transition: background-color 140ms ease, border-color 1
 .panel, .campaign-results { min-width: 0; }
 .panel { background: #101310; border: 1px solid var(--edge); border-radius: 10px; padding: clamp(15px, 2.35vw, 26px); }
 .campaign-results { padding: 7px 0 0; }
+.campaign-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+#campaign-form :is(.campaign-pair, .campaign-fields) label { align-content: start; min-width: 0; }
+#campaign-form .campaign-pair input { min-width: 0; }
 .campaign-card, .account-list article, .studio-source, #agent-form, #preview {
   border-color: var(--edge);
   background: var(--surface);

@@ -97,6 +97,9 @@ async function main() {
     await mobile.getByRole('button', {name: 'Preview', exact: true}).waitFor()
     assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
     await mobile.screenshot({path: join(evidence, 'owner-mobile.png'), fullPage: true})
+    await mobile.getByRole('navigation').getByRole('link', {name: 'Campaigns'}).click()
+    await mobile.getByRole('button', {name: /Short clips campaign/}).click()
+    assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
 
     await desktop.getByRole('navigation').getByRole('link', {name: 'AI Agent'}).click()
     const agent = desktop.locator('#agent-form')
