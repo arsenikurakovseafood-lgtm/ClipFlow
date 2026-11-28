@@ -1,0 +1,7 @@
+{$CLIPFLOW_SITE} {
+	header {
+		X-Robots-Tag "noindex, nofollow"
+		Referrer-Policy "no-referrer"
+	}
+	reverse_proxy web:3000
+}

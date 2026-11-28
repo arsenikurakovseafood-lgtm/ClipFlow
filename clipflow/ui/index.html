@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reelattice | Campaign workspace</title>
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/reelattice.css">
+<script defer src="/workspace.js"></script>
+<script defer src="/app.js"></script>
+<script defer src="/campaigns.js"></script>
+<script defer src="/batch.js"></script>
+<script defer src="/insights.js"></script>
+</head>
+<body>
+<div class="workspace-shell">
+<aside class="sidebar" aria-label="Reelattice navigation">
+<a class="brand" href="#overview"><span class="brand-mark" aria-hidden="true"></span>Reelattice</a>
+<nav aria-label="Workspace">
+<a href="#overview"><span aria-hidden="true">⌂</span>Overview</a>
+<a href="#campaigns"><span aria-hidden="true">⊕</span>Campaigns</a>
+<a href="#agent"><span aria-hidden="true">✳</span>AI Agent</a>
+<a href="#studio"><span aria-hidden="true">✂</span>Studio</a>
+<a href="#content"><span aria-hidden="true">▶</span>Content</a>
+<a href="#analytics"><span aria-hidden="true">▥</span>Analytics</a>
+<a href="#accounts"><span aria-hidden="true">↗</span>Accounts</a>
+<a href="#revenue"><span aria-hidden="true">€</span>Revenue</a>
+</nav>
+<div class="sidebar-footer"><span class="mode">Owner preview</span><a href="#settings">Settings</a><button id="sign-out" hidden>Sign out</button></div>
+</aside>
+<main class="workspace-main">
+<section id="overview" class="hero" data-screen>
+<div class="feature-hero">
+<div class="feature-content"><p class="eyebrow">CAMPAIGN WORKSPACE</p>
+<h1>Make the cut.<br><em>Build momentum.</em></h1>
+<p>Bring a goal and some footage. Create short clips, review the cuts and see what moves your campaign.</p>
+<a class="workspace-cta" href="#campaigns">Start a campaign <span aria-hidden="true">↗</span></a></div>
+</div>
+<div class="stats"><div><strong id="ready">—</strong><span>Ready to preview</span></div>
+<div><strong id="active">—</strong><span>In progress</span></div>
+<div><strong id="failed">—</strong><span>Failed</span></div>
+<div><strong id="overview-due">—</strong><span>Due to publish</span></div>
+<div><strong id="overview-cash">—</strong><span>Confirmed cash result</span></div></div>
+<h2 class="section-title">What to test next</h2><div id="overview-decisions"></div>
+</section>
+<section id="trim" data-screen hidden>
+<p class="eyebrow">STUDIO</p>
+<h2>Create a clip</h2>
+<p>Use this screen when you know the exact start and end.</p>
+<a href="#studio">Back to Studio</a>
+<form id="render">
+<label class="upload">Source video
+<input type="file" name="source" accept=".mp4,.mov,.webm,video/mp4,video/quicktime,video/webm" required>
+<small id="upload-limits">Authorized MP4, MOV or WebM · up to 25 MiB</small></label>
+<div class="range">
+<label>Start (seconds)<input name="start" type="number" min="0" max="1800" step="0.01" value="0" required></label>
+<label>End (seconds)<input name="end" type="number" min="1" max="1800" step="0.01" value="4" required></label>
+</div>
+<label>Optional caption<input name="caption" maxlength="160" placeholder="Text shown during this clip"></label>
+<label id="auto-option" class="check-option" hidden>
+  <input type="checkbox" name="autoCaptions"> Generate captions from speech (OpenAI)
+</label>
+<button type="submit">Queue render <span aria-hidden="true">↗</span></button>
+<p id="status" role="status"></p>
+</form>
+</section>
+<section id="content" data-screen hidden>
+<p class="eyebrow">CONTENT</p>
+<h2>Render library</h2>
+<p id="library-status" role="status">Loading jobs…</p>
+<div id="preview" hidden>
+<video id="player" aria-label="Rendered vertical clip" controls preload="metadata" playsinline></video>
+<a id="download" class="download">Download MP4</a>
+</div>
+<ul id="jobs"></ul>
+</section>
+<section id="batch-studio" data-screen hidden>
+<p class="eyebrow">BATCH STUDIO</p>
+<h1>Create clips</h1>
+<p>Pick a source and choose what to make. Every finished clip waits for your approval.</p>
+<p id="studio-campaign-context" class="studio-notice" hidden></p>
+<p id="batch-unavailable" hidden>Series editing is unavailable with the current storage settings. <a href="#trim">Open manual trim</a>.</p>
+<form id="batch-form" hidden>
+<div class="studio-source">
+<label>Where is your video?<select name="sourceKind"><option value="file">Upload a video file</option><option value="youtube">Convert a YouTube segment to MP4</option><option value="link">Use a Cloudflare R2 file link</option><option value="sample">Use the Reelattice walkthrough sample</option></select></label>
+<label id="batch-source-url" hidden>Video file link<input name="sourceUrl" type="url" maxlength="2400"><small id="youtube-source-help"></small></label>
+<label id="batch-source-file">Upload video<input name="source" type="file" accept=".mp4,.mov,.webm" required><small>Authorized MP4, MOV or WebM · up to 8 MiB and 2 minutes</small></label>
+<p id="batch-sample-note" hidden>Try the 24-second Reelattice walkthrough without uploading a file.</p>
+<details id="batch-segment">
+<summary>Choose a time range</summary>
+<div class="range">
+<label>From <input name="segmentStart" maxlength="10" placeholder="12:00"></label>
+<label>To <input name="segmentEnd" maxlength="10" placeholder="13:00"></label>
+</div>
+<small>Use seconds, MM:SS or HH:MM:SS. Select 3–120 seconds.</small>
+</details>
+<label id="source-permission" class="check-option" hidden><input name="authorized" type="checkbox"> I have permission to process and edit this video.</label>
+<div id="converter-availability" class="studio-notice" hidden>
+<p>YouTube conversion is unavailable on this deployment. You can upload your source or run the sample.</p>
+</div>
+<button type="button" id="try-segment">Run sample now</button>
+<p id="sample-status" role="status"></p>
+</div>
+<div class="range">
+<label>What are you making?<select name="mode"><option value="visual">Quick clips</option><option value="speech">Podcast highlights</option><option value="music">Music promos</option><option value="original">Original promo</option></select></label>
+<label>Number of clips<input name="count" type="number" min="1" max="10" value="3" required></label>
+</div>
+<label>What should the clips achieve?<textarea name="goal" maxlength="500" placeholder="Find the strongest moments about persistence" required></textarea></label>
+<label id="batch-track" hidden>Track audio file<input name="music" type="file" accept=".mp3,.wav,.m4a,.flac,.ogg,.aac"><small>Upload your authorized track file. It replaces audio from the footage.</small></label>
+<div id="caption-controls" class="studio-captions">
+<label class="check-option"><input type="checkbox" name="automaticCaptions" disabled>Generate subtitles from audio</label>
+<label id="caption-language">Audio language<select name="captionLanguage"><option value="en">English</option><option value="ru">Russian</option></select></label>
+</div>
+<p id="caption-availability" role="status"></p>
+<div class="studio-actions"><button type="submit">Create clips</button><a href="#content">Open Content</a></div>
+<p id="batch-status" role="status"></p>
+<details id="studio-advanced"><summary>Advanced settings</summary>
+<div class="creative-fields">
+<label>Campaign<select name="campaign"><option value="">Standalone clips</option></select></label>
+<label>Campaign reference (optional)<input name="reference" type="url" maxlength="400" placeholder="https://…"></label>
+<label>Subtitle file override (.srt or .vtt) <input name="captions" type="file" accept=".srt,.vtt"><small id="batch-caption-help">Required for spoken highlights in this preview. Use SRT or WebVTT.</small></label>
+<div class="range">
+<label>Release window (days)<input name="days" type="number" min="1" max="30" value="3" required></label>
+<label>Caption color<select name="style"><option value="white">White</option><option value="pink">Hot pink</option><option value="red">Red</option><option value="blue">Sky blue</option></select></label>
+</div>
+<details id="creative-options"><summary>Opening hook and call to action</summary>
+<div class="creative-fields">
+<label>Hook format<select name="creative"><option value="standard">Standard</option><option value="question">Question</option><option value="statement">Statement</option><option value="result">Result</option></select></label>
+<label>Opening text<input name="hook" maxlength="100" placeholder="What catches attention in the first two seconds?"></label>
+<label>Call to action<input name="cta" maxlength="100" placeholder="What should viewers do next?"></label>
+</div></details>
+</div>
+</details>
+</form>
+<p><a href="#trim">Trim a single clip manually</a></p>
+</section>
+<section id="agent" data-screen hidden>
+<p class="eyebrow">CAMPAIGN PLANNER</p>
+<h1>Plan a campaign</h1>
+<p id="agent-capability">Guided planning is available while AI planning is paused.</p>
+<form id="agent-form">
+  <label>Quick start<select name="preset"><option value="speech">AI Clipping</option><option value="music">Music Promotion</option><option value="original">Faceless Content</option><option value="product">Product Promotion</option><option value="affiliate">Affiliate Campaign</option></select></label>
+  <label>Describe your campaign<textarea name="goal" maxlength="1500" required></textarea></label>
+  <button type="submit" name="guided">Prepare a draft</button>
+  <button type="submit" name="ai" hidden>Ask AI for a draft</button>
+  <p id="agent-status" role="status"></p>
+  <div id="agent-plan"></div>
+</form>
+</section>
+<div class="workspace campaign-workspace" id="campaigns" data-screen hidden>
+<header class="campaign-intro"><div><p class="eyebrow">CREATE &amp; DISTRIBUTE</p><h1>Campaigns</h1></div>
+<a href="#agent" class="secondary-link">Plan with the agent ↗</a></header>
+<section class="panel">
+<h2>New campaign</h2>
+<div class="starter-options" aria-label="Campaign templates">
+<button type="button" data-campaign-template="shorts"><b>Short clips campaign</b><small>Highlights from one video</small></button>
+<button type="button" data-campaign-template="music"><b>Music release</b><small>Teasers timed to your track</small></button>
+<button type="button" data-campaign-template="product"><b>Product launch</b><small>Demos with a call to action</small></button>
+</div>
+<form id="campaign-form">
+<label>Name<input name="name" maxlength="80" required></label>
+<label>Content goal<textarea name="goal" maxlength="1500" required placeholder="Reach new listeners with weekly highlights from my approved footage"></textarea></label>
+<div class="campaign-pair">
+<label>Publishing destination<select name="channel"><option value="youtube">YouTube Shorts</option><option value="instagram">Instagram Reels</option><option value="tiktok">TikTok</option></select></label>
+<label>Content workflow<select name="workflow"><option value="visual">Quick clips</option><option value="speech">Podcast highlights</option><option value="music">Music promos</option><option value="original">Original promo</option></select></label>
+</div>
+<div class="campaign-pair">
+<label>Target clips<input name="target_clips" type="number" min="1" max="10" value="3" required></label>
+<label>First release<input name="release_start" type="datetime-local"><small>Optional. Approval adds clips to this schedule.</small></label>
+</div>
+<label>Publishing mode<select name="publication_mode"><option value="manual">Manual handoff</option><option value="youtube" disabled>Automatic YouTube upload</option></select></label>
+<label id="youtube-consent" class="check-option" hidden><input name="publication_consent" type="checkbox"> Publish each clip I approve to the connected YouTube channel at its scheduled time.</label>
+<details id="campaign-creative"><summary>Hook examples and creative direction</summary>
+<div class="creative-fields">
+<div class="hook-options" aria-label="Example hooks">
+<button type="button" data-hook="question">What would you do differently?</button>
+<button type="button" data-hook="statement">This is where most people get stuck.</button>
+<button type="button" data-hook="result">Here’s what changed when we tried it.</button>
+</div>
+<label>Hook format<select name="hook_format"><option value="standard">Standard</option><option value="question">Question</option><option value="statement">Statement</option><option value="result">Result</option></select></label>
+<label>Hook text<input name="hook_text" maxlength="100"></label>
+<label>Campaign call to action<input name="cta" maxlength="100" placeholder="Watch the full breakdown"></label>
+</div></details>
+<div class="campaign-fields">
+<label>Duration (days)<input name="duration_days" type="number" min="1" max="90" value="14" required></label>
+<label>Days between posts<input name="cadence_days" type="number" min="1" max="90" value="7" required><small>With a first release time, clips can go out closer together to fit the campaign.</small></label>
+<label>Budget (€)<input name="budget" type="number" min="0" max="1000" step="0.01" value="0" required></label>
+</div>
+<small>The draft records a budget target. Manual scheduling makes no external provider calls.</small>
+<label id="campaign-caption-budget" hidden>Campaign transcription cap (USD)<input name="transcription_budget" type="number" min="0" max="100" value="0" step="0.01"></label>
+<button type="submit">Create plan</button>
+</form>
+</section>
+<section class="campaign-results">
+<p class="eyebrow">REVIEW AND DISTRIBUTE</p>
+<h2>Campaigns &amp; publishing</h2>
+<p id="campaign-status" role="status"></p>
+<div id="campaign-list"></div>
+<h3>Release queue</h3>
+<div id="publication-list"></div>
+</section>
+</div>
+<section id="revenue" data-screen hidden>
+<h1>Revenue</h1>
+<p>Record cash receipts and expenses for your campaigns.</p>
+<div id="revenue-totals" class="stats"></div>
+<p id="insights-status" role="status"></p>
+<h2 class="section-title">Record a transaction</h2>
+<form id="ledger-form">
+<label>Category<select name="kind"><optgroup label="Income"><option value="paid_campaign">Paid campaign</option><option value="affiliate">Affiliate commission</option><option value="platform">Platform payout</option><option value="subscription">Subscription receipt</option></optgroup><optgroup label="Expenses"><option value="api">API</option><option value="render">Rendering</option><option value="storage">Storage</option><option value="publishing">Publishing</option><option value="fees">Fees</option><option value="tax">Tax</option></optgroup></select></label>
+<div class="range"><label>Amount (€)<input name="amount" type="number" min="0.01" max="1000000" step="0.01" required></label><label>Status<select name="state"><option value="confirmed">Confirmed cash</option><option value="pending">Pending</option><option value="estimated">Estimated</option></select></label></div>
+<label>Campaign<select name="campaign"><option value="">Workspace-wide</option></select></label>
+<label>Receipt or reference<input name="note" maxlength="240" required></label>
+<button type="submit">Record transaction</button>
+</form>
+<h2 class="section-title">Transactions</h2><div id="ledger-entries"></div>
+</section>
+<section id="analytics" data-screen hidden>
+<h1>Campaign analytics</h1>
+<p>Compare how clips perform at the same checkpoint and choose what to test in the next release.</p>
+<h2 class="section-title">What to test next</h2><div id="analytics-decisions" aria-live="polite"></div>
+<h2 class="section-title">Campaign measurements</h2><div id="performance-list"></div>
+</section>
+<section id="accounts" data-screen hidden>
+<p class="eyebrow">ACCOUNTS</p>
+<h1>Publishing accounts</h1>
+<p>This preview supports manual publishing. Create your clips in Studio and put them on a schedule in Campaigns.</p>
+<div class="account-list">
+<article><h2>Instagram</h2><p>Manual publishing · connection unavailable</p><a href="https://www.instagram.com/" target="_blank" rel="noopener noreferrer">Open Instagram</a></article>
+<article><h2>TikTok</h2><p>Manual publishing · connection unavailable</p><a href="https://www.tiktok.com/upload" target="_blank" rel="noopener noreferrer">Open TikTok Upload</a></article>
+<article><h2>YouTube</h2><p id="youtube-publishing-status">Manual handoff · automatic publishing disconnected</p><p id="youtube-analytics-status">Public statistics require a configured YouTube Data API key.</p><a href="https://studio.youtube.com/" target="_blank" rel="noopener noreferrer">Open YouTube Studio</a></article>
+</div>
+</section>
+<section id="settings" data-screen hidden>
+<h1>Workspace settings</h1>
+<h2 class="section-title">Processing</h2>
+<p>Pause new background processing across all campaigns. A task already running may finish.</p>
+<p id="settings-status" role="status"></p>
+<div id="settings-controls" class="campaign-actions"></div>
+<h2 class="section-title">Usage</h2><div id="workspace-usage" class="stats"></div>
+<h2 class="section-title">Recent decisions</h2><div id="workspace-audit"></div>
+</section>
+<footer>Owner Studio · Review clips before publishing</footer>
+</main>
+</div>
+</body></html>

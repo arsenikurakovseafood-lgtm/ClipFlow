@@ -1,17 +1,228 @@
-# ClipFlow
+# Reelattice
 
-Cloud-first AI content production and campaign automation. Implementation is in progress in Codex Cloud; this initialization commit is not a deployed product.
+Reelattice is a campaign workspace for planning, creating, reviewing and distributing short video. The existing repository, deployment URL and environment variable names retain the ClipFlow identifier.
 
-## Architecture constraints
+## Test the owner workspace in a browser
 
-- Develop, install dependencies, build, and test only in cloud environments.
-- Source in GitHub; automated checks and approved deployments through GitHub Actions.
-- Application, persistent scheduler, background workers, and FFmpeg run remotely.
-- Supabase authentication/PostgreSQL and private Cloudflare R2 media storage.
-- Browser-direct signed uploads, streamed previews, explicit downloads only.
-- No founder-local dependency installation, Docker Desktop, AI models, or media caches.
-- Enforce spending limits, storage quotas, configurable retention, and temporary-file cleanup.
-- EUR 15–50 initial monthly infrastructure/API budget is a target to validate.
-- Paid services require explicit founder approval.
+Open the [Reelattice site](https://clipflow-h09b.onrender.com/welcome) or [sign in to Campaigns](https://clipflow-h09b.onrender.com/signin#campaigns) with the existing owner password. Start from a campaign template or prepare a draft in **AI Agent**. Choose the clip count, hook and release cadence, then select **Approve & add source**. Upload footage or use the built-in walkthrough sample. The worker renders vertical MP4s for review in **Content**. If your plan has a first release time, approving a clip adds it to the release queue automatically; without a release time, schedule the clip in **Campaigns**. After manual publication, record the post URL and actual checkpoints. **Analytics** shows measurements and hook recommendations when there are enough comparable clips. **Revenue** separates confirmed cash, pending and estimated amounts. **Settings** controls the global processing pause.
 
-Verified functionality, test results, deployment instructions, environment variables, costs, and external blockers will be documented as implementation proceeds. Codex is the development tool, not the production runtime.
+The published preview has temporary storage and uses manual publishing. A persistent owner deployment can enable the official YouTube integration described below. Live OpenAI and public billing require the prerequisites documented in [build status](BUILD_STATUS.md).
+
+### Enable YouTube publishing in an authorized persistent owner deployment
+
+Use a Google OAuth project with YouTube Data API enabled. Grant offline access for your channel with `youtube.upload` and `youtube.readonly`, and confirm the project can upload public videos. YouTube restricts uploads from certain unverified projects to private visibility until the project passes an audit.
+
+In the cloud secret store, configure `CLIPFLOW_YOUTUBE_CLIENT_ID`, `CLIPFLOW_YOUTUBE_CLIENT_SECRET`, `CLIPFLOW_YOUTUBE_REFRESH_TOKEN` and `CLIPFLOW_YOUTUBE_CHANNEL_ID` for the worker. Set `CLIPFLOW_YOUTUBE_PUBLISHING=true` only after checking the channel and permissions. A Render deployment also needs a writable mounted disk at `/var/data`. To enable public upload for a campaign, choose **Automatic YouTube upload**, explicitly consent to publishing, add a first release time and approve the clips. The worker uploads only due, approved clips and confirms public processing before marking a post published. If the upload outcome is unknown, check the channel in YouTube Studio before attempting it again. Published posts can supply views, likes and comments at 24 hours, 72 hours and 7 days while the campaign is active. Instagram and TikTok use manual handoff.
+
+[YouTube uploads and audit restrictions](https://developers.google.com/youtube/v3/docs/videos/insert) · [Google OAuth web server guide](https://developers.google.com/identity/protocols/oauth2/web-server)
+
+Run the media checks from a Codex Cloud checkout or from GitHub Actions. The cloud image must provide Python 3, FFmpeg, FFprobe, libx264, libass, and DejaVu Sans.
+
+```sh
+python3 -m unittest discover -s tests -v
+python3 -m clipflow source.mp4 clip.mp4 --start 10 --end 30 --captions captions.json
+```
+
+Caption input is a JSON array with `start` and `end` in source-relative seconds and a `text` string on each entry. Use authorized media staged on the cloud worker. The command writes an H.264 MP4 to the cloud filesystem and reports duration, dimensions, and bytes.
+
+See [build status](BUILD_STATUS.md) and [architecture](ARCHITECTURE.md).
+
+## Cloud constraints
+
+Development, dependencies, builds, verification, and runtime are cloud-only. GitHub Actions runs checks and will handle approved deployments. The application, scheduler, workers, and FFmpeg belong on remote infrastructure. Production design uses Supabase Auth/Postgres, private R2 media, signed browser-direct upload, streamed preview, and explicit download.
+
+Production must enforce spending limits, storage quotas, retention, and temporary-file cleanup. The initial €15–50 monthly target requires validation. Paid services require explicit founder approval. Codex Cloud is the development environment.
+
+## Private owner demo
+
+Run the following in two processes on Codex Cloud, sharing a Cloud-only state directory with mode `0700`.
+
+```sh
+python3 -m clipflow.web /workspace/scratch/clipflow-demo/media
+python3 -m clipflow.worker /workspace/scratch/clipflow-demo/media
+```
+
+The server defaults to Cloud loopback port 3000. For an owner-only hosted preview, first configure port 3000 under Edit Environment → HTTP Previews and apply it to the chat. Once the authenticated gateway is configured, start the web process with `--bind 0.0.0.0 --authenticated-gateway` and use the URL advertised by the environment. This flag assumes the surrounding network restricts access to the authenticated gateway. The demo has no application login and must never be exposed directly.
+
+Choose an authorized MP4, MOV or WebM, enter the clip range and optionally add a caption. Queue the render, then play it in the library. Downloading requires clicking **Download MP4**.
+
+## Run a private owner preview on an authorized cloud server
+
+The repository includes a Docker Compose package for a single owner. It runs a
+public-facing Caddy gateway, a private web container, and an offline FFmpeg
+worker. The worker and web share a persistent Docker volume. Only Caddy exposes
+ports. The gateway requires the owner username and password for all routes.
+
+On the cloud server, check out the reviewed commit and provide the settings from
+`.env.example` through the server's secret store. Set `CLIPFLOW_SITE` to the real
+DNS hostname and point its records at the server. Set `CLIPFLOW_BIND_IP=0.0.0.0`
+only after DNS, TLS ingress on ports 80 and 443, and the owner hash are configured.
+Use Caddy's `hash-password` command to create the bcrypt hash and store the
+password separately. Run `docker compose up -d --build` on the server. Keep the
+named volume when updating the containers. The browser URL is the configured
+HTTPS hostname.
+
+This deployment package uses the demo's SQLite and private on-server storage.
+Use authorized media and keep the hostname private to the owner. Before real
+customer traffic, configure production authentication and media storage, and
+complete retention, cleanup, and usage enforcement.
+
+The `Deploy private ClipFlow to VPS` GitHub Actions workflow is a manual deployment path for reviewed `main` commits. In the `clipflow-production` GitHub environment, configure required reviewers where supported, `CLIPFLOW_DEPLOY_ENABLED=true`, `CLIPFLOW_SSH_TARGET`, `CLIPFLOW_SSH_KEY` and a pinned `CLIPFLOW_SSH_KNOWN_HOSTS` entry. The authorized cloud host needs Docker Compose, the repository at `/srv/clipflow/repo`, and `/srv/clipflow/owner.env` outside Git. An optional `/srv/clipflow/enable-owner-integrations` marker selects the Supabase Auth/R2 variant. The deployer preserves the Compose project and its data volume. This workflow requires an approved VPS and has not deployed one.
+
+## Enable owner sign-in and direct private media on a configured cloud server
+
+For this mode, use an HTTPS hostname and provide the Supabase and R2 settings
+listed in `.env.example` in the cloud secret store. Provision the single owner
+in Supabase Auth and use their UUID. Browser login uses that user's password
+and the server accepts only that UUID. Use a dedicated random session secret
+and rotate it to invalidate outstanding studio sessions.
+
+Set the R2 bucket to private. Scope the key to this bucket and configure CORS
+only for the exact studio origin, permitting PUT and the Content-Type header.
+Set lifecycle expiry for abandoned media under the owners prefix as a backstop.
+The app keeps normal source and output durations in the retention settings.
+Batch source media, track and caption files share one bounded signed private upload. The worker stages the pinned bundle and stores each resulting clip separately in R2. The integration test uses a fixture S3 endpoint with real FFmpeg output. Verify CORS and signatures on the live bucket before owner use.
+
+Run on the authorized cloud host:
+
+```sh
+docker compose -f compose.yaml -f compose.integrations.yaml up -d --build
+```
+
+The integration variant uses the application login and HTTPS gateway. Keep
+`CLIPFLOW_PAID_WORKLOADS_ENABLED=false` until the owner approves spend. To enable
+captions, provide the worker-only OpenAI key and a positive monthly USD budget
+in microdollars. Usage estimates reserve one full billed minute per six-second
+window at the documented model rate. Estimate precision and provider access
+still need validation with the live account.
+When captions are enabled, linked campaign jobs also require an explicit USD cap in the campaign draft. A zero cap prevents campaign transcription charges. The worker reserves both budgets atomically before the call.
+
+- [Supabase owner authentication](https://supabase.com/docs/reference/javascript/auth-signinwithpassword)
+- [R2 presigned URLs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/)
+- [OpenAI file transcription](https://developers.openai.com/api/docs/guides/speech-to-text)
+- [GPT-Transcribe pricing](https://developers.openai.com/api/docs/models/gpt-transcribe)
+
+To enable the AI Agent, set a positive `CLIPFLOW_PLANNING_MONTHLY_MICRO_USD`
+cap and the worker-only OpenAI key after approving paid workloads. Each draft
+reserves a conservative $0.002. It remains a suggestion until the owner reviews
+it, creates a draft, and separately approves the campaign.
+
+- [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+- [GPT-6 Luna pricing](https://developers.openai.com/api/docs/models/gpt-6-luna)
+
+## Temporary owner preview on Render
+
+Create a Docker Web Service from this repo and point Render at the branch
+containing the preview launcher. Leave Root Directory blank and use
+`./Dockerfile`. Set the instance type to Free and generate a random
+`CLIPFLOW_PREVIEW_PASSWORD` in Render's Environment Variables section.
+Use `/healthz` as the health check path. The Docker image starts the web
+process and FFmpeg worker together on a managed Render service. Open the
+service's HTTPS URL and sign in with the generated password.
+
+Only authorized test footage belongs in this preview. Its maximum source
+size is 8 MiB, source duration is two minutes, and clip duration is 10 seconds.
+Render Free can sleep and discard local files between restarts. For a durable
+studio, use the private owner deployment with persistent storage. No paid
+integration runs in the Free preview.
+
+## Batch Studio
+
+Choose **Spoken highlights** for authorized source footage and an SRT or
+WebVTT file. Describe the goal, choose how many clips to prepare (up to ten),
+select a subtitle color, and set a release window. Selection favors complete,
+non-overlapping passages with more words related to the goal. The studio
+reports if the source has fewer suitable passages than requested.
+
+Choose **Music promos** to add an authorized audio file. The worker prepares
+distinct excerpts around scene changes where available, replacing the
+footage audio with excerpts from the uploaded track. Each clip is rendered
+as its own vertical MP4. Each source or audio file is limited to 8 MiB,
+source video to two minutes, and exported clips to 10 seconds. The free
+preview uses timestamped subtitles from the owner.
+
+Review the renders, approve a campaign, and select **Schedule entire batch**
+with a first release time. The queue spreads the clips across the selected
+release days. Campaign handoff remains manual.
+
+Spotify URLs can be stored as campaign references. Audio for editing
+comes from the uploaded track file.
+
+- [YouTube API developer policies](https://developers.google.com/youtube/terms/developer-policies/)
+- [Spotify developer policy](https://developer.spotify.com/policy)
+
+Studio opens from the left sidebar. **Quick clips** takes a video without a
+subtitle file. The cloud container includes Vosk English and Russian speech
+models. The worker uses them for automatic subtitles and speech-driven
+selection in **Podcast highlights** when OpenAI is disabled. The audio
+language can be selected in Studio. An optional SRT/WebVTT override lives in
+**Advanced settings**.
+**Use a Cloudflare R2 file link** accepts a direct HTTPS video link.
+**Convert a YouTube segment to MP4** accepts an authorized single video or
+Short and a 3–120 second interval, for example **From 12:00** and **To 13:00**.
+The original video may be longer. On the Render owner preview, ClipFlow's
+cloud worker uses yt-dlp and FFmpeg to request the range directly. It verifies
+that the resulting MP4 matches the selected duration before rendering. A
+subtitle file uses the original video's timestamps. If YouTube refuses access
+from the host, replace the source with an authorized MP4 already cut to the
+chosen window. The built-in path has no VidFetch dependency. Its inputs remain
+limited to one authorized YouTube video and an 8 MiB staged segment.
+**Run sample now** queues 00:06–00:18 from ClipFlow's own walkthrough in one
+click and opens Content to track both clips.
+Uploads and direct R2 files also support an optional range for editing.
+
+#### Configure the optional external converter
+
+Render prioritizes the built-in converter. The VidFetch instructions below
+apply only if an operator explicitly sets `CLIPFLOW_BUILTIN_YOUTUBE=false`
+and chooses to use the external converter.
+
+For the private Render Free preview, create an API key in a VidFetch Free
+account with no payment balance or prepaid packs. In the service’s
+**Environment** settings, set `CLIPFLOW_VIDFETCH_API_KEY` and
+`CLIPFLOW_VIDFETCH_FREE_ONLY=true`. The worker verifies the plan, remaining
+allowance and absence of funded usage before submitting a conversion. The
+preview defaults to five local attempts. That counter can reset with Render’s
+ephemeral filesystem, so the provider’s free allowance is the hard ceiling.
+The free-plan trim entitlement still requires an authenticated live test.
+
+Use a VidFetch account approved for the workflow and verify trim access and a
+hard spending cap with the provider before enabling it. The provider's public
+pricing page describes a free API plan and lists trim specifically under
+Growth at $99/month. The free plan's trim entitlement has not been verified.
+On a durable cloud deployment, store the API key as
+`CLIPFLOW_VIDFETCH_API_KEY`, configure the exact HTTPS hostname used for this
+account's signed delivery URLs in `CLIPFLOW_VIDFETCH_DELIVERY_ORIGIN`, set a
+positive `CLIPFLOW_VIDFETCH_MONTHLY_JOBS`, and explicitly enable
+`CLIPFLOW_VIDFETCH_ENABLED=true`. Outside free-only mode, the Render
+launcher requires a writable mounted persistent disk for the reservation
+ledger. The worker accepts at most
+8 MiB per delivered segment, sends the key only to the VidFetch API and records
+one reservation per submission. Leave provider overages off. A live API run is
+required before offering the feature to customers.
+
+- [VidFetch range conversion](https://www.vidfetch.dev/solutions/youtube-clip-api)
+- [VidFetch pricing](https://www.vidfetch.dev/pricing)
+
+**Original promo** uses approved footage with an independent opening hook and closing call-to-action overlay. Hooks are categorized for comparisons. Campaign analytics only compare owner-entered snapshots with the same time window and sufficient clips and recorded views. When the server has a restricted `CLIPFLOW_YOUTUBE_DATA_API_KEY`, a recorded public YouTube post can also show on-demand official view, like and comment counts. These observations are timestamped, short-lived and displayed independently from historical owner-entered checkpoints. [YouTube `videos.list`](https://developers.google.com/youtube/v3/docs/videos/list)
+
+### Optional OpenAI transcription on Render
+
+The default English/Russian recognizer runs on the cloud CPU without a
+provider key. Optionally, automatic speech and vocal subtitles can use the
+OpenAI transcription adapter.
+The Render launcher only enables paid calls with a writable persistent disk
+mounted at `/var/data`. Render Free has ephemeral storage, so a local spend
+ledger on Free would reset on restart. Enable only after budget approval.
+
+In Render Environment, set `OPENAI_API_KEY`, set
+`CLIPFLOW_PAID_WORKLOADS_ENABLED=true`, and set a positive
+`CLIPFLOW_TRANSCRIPTION_MONTHLY_MICRO_USD` (for example, `1000000` for a $1
+monthly reservation cap). Keep the key in Render, never in Git or chat.
+Studio will offer **Generate subtitles from audio**. Spoken clips use
+source speech. Music promos use vocals from the uploaded track excerpt.
+Approximate six-second captions are generated from audio windows; word-level
+alignment and live accuracy have not been validated.
+
+- [Render persistent disks](https://render.com/docs/disks)
+- [OpenAI transcription model and pricing](https://developers.openai.com/api/docs/models/gpt-transcribe)
