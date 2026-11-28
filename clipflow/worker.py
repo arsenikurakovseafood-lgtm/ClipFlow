@@ -15,6 +15,7 @@ from clipflow.builtin_converter import BuiltinConverter, enabled as builtin_yout
 from clipflow.insights import Insights
 from clipflow.planner import Plans, planner_budget
 from clipflow.publishing import YouTubePublisher, process_publication
+from clipflow.youtube_connection import YouTubeConnection
 from clipflow.queue import Queue, source_retention_seconds
 from clipflow.r2 import PrivateMedia
 from clipflow.render import Cue, probe, render
@@ -167,8 +168,9 @@ def main():
     root = parser.parse_args().root.resolve()
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     queue = Queue(root / 'jobs.sqlite3')
-    publisher = YouTubePublisher.configured()
-    if publisher:
+    connection = YouTubeConnection.configured(queue)
+    publisher = None if connection else YouTubePublisher.configured()
+    if publisher or connection:
         Campaigns(queue)
     transcriber = Transcriber.configured() or (CloudSpeech() if CloudSpeech.available() else None)
     builtin = builtin_youtube_enabled()
@@ -185,8 +187,12 @@ def main():
     output_seconds = max(1, int(os.environ.get('CLIPFLOW_OUTPUT_RETENTION_HOURS', '168'))) * 3600
     next_sweep = 0
     next_checkpoint = 0
+    next_connection_check = 0
     while True:
         now = time.time()
+        if connection and now >= next_connection_check:
+            publisher = connection.publisher()
+            next_connection_check = now + 5
         if now >= next_sweep:
             sweep(root, queue, media, owner_id, now=now, source_seconds=source_seconds,
                   output_seconds=output_seconds)
@@ -196,7 +202,8 @@ def main():
                     vidfetch.release(queue, job_id, remote_id)
             next_sweep = now + 300
         if publisher:
-            process_publication(queue, publisher, root, media, owner_id)
+            process_publication(queue, publisher, root, media, owner_id,
+                                connected=connection.connected if connection else None)
             if now >= next_checkpoint:
                 insights.collect_checkpoint(publisher)
                 next_checkpoint = now + 60

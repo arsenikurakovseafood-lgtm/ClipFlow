@@ -45,11 +45,14 @@ class YouTubePublisher:
     def token(self):
         return self.json(TOKEN, data=self.credentials)['access_token']
 
-    def upload(self, path, title, still_approved):
-        token = self.token()
+    def check_channel(self, token):
         channels = self.json(SERVICE + '/youtube/v3/channels?part=id&mine=true', token=token)['items']
         if {channel['id'] for channel in channels} != {self.channel}:
             raise ValueError('The connected account does not match the configured channel.')
+
+    def upload(self, path, title, still_approved):
+        token = self.token()
+        self.check_channel(token)
         size = path.stat().st_size
         data = json.dumps({'snippet': {'title': title[:100]}, 'status': {'privacyStatus': 'public'}}).encode()
         headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json',
@@ -90,7 +93,7 @@ def publication_allowed(db, post_id):
           AND j.review='approved' AND j.state='ready'""", (post_id,)).fetchone())
 
 
-def process_publication(queue, publisher, root, media=None, owner_id=None):
+def process_publication(queue, publisher, root, media=None, owner_id=None, connected=None):
     now = datetime.now(timezone.utc)
     stamp = now.isoformat()
     with queue.transaction() as db:
@@ -115,6 +118,8 @@ def process_publication(queue, publisher, root, media=None, owner_id=None):
     identifier = candidate['id']
 
     def still_approved():
+        if connected and not connected():
+            return False
         with queue.transaction() as db:
             return publication_allowed(db, identifier)
 

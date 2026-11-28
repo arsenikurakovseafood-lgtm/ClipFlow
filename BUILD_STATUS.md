@@ -1,5 +1,11 @@
 # Build status
 
+## YouTube owner connection
+
+On an authorized persistent deployment, Accounts can start the Google OAuth consent screen and connect the configured YouTube channel. Enrollment uses a one-time browser-bound state, PKCE, encrypted refresh-token storage and channel verification. Disconnecting stops new scheduled uploads and attempts revocation with Google. The Render Free preview cannot run publication continuously. Connection and publication require a real Google OAuth application and channel owner consent. The tests use simulated Google responses and do not assert live publication.
+
+After a failed source import, Content can take the full original and extract the selected time range on the worker. Already trimmed replacements still work. This recovery does not establish that Render can fetch a YouTube page's video stream.
+
 ## Reelattice campaign workspace · 28 November 2026
 
 The new brand and black, lime and white UI cover the landing page, sign-in and owner workspace. Campaign templates supply a starting goal, workflow, hook and publishing cadence. An approved plan can open Studio with its settings filled in. Approved renders in a planned campaign are queued once at the configured cadence. The Analytics view separates owner-reported numbers from official observations and compares hook formats only when the campaign has sufficient comparable measurements.

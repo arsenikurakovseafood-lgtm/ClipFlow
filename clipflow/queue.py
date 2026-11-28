@@ -234,12 +234,12 @@ class Queue:
             return db.execute(f'SELECT 1 FROM jobs WHERE id=? AND {REPLACEABLE_BATCH}',
                               (job_id, *replacement_window())).fetchone() is not None
 
-    def replace_batch_source(self, job_id, folder, *, staged=None, source_url=None):
+    def replace_batch_source(self, job_id, folder, *, staged=None, source_url=None, original=None):
         with self.transaction() as db:
             changed = db.execute(f"""UPDATE jobs SET state='queued', attempts=0, error=NULL,
                 finished_at=NULL, lease_token=NULL, lease_until=NULL,
-                spec=json_set(spec,'$.source_url',?) WHERE id=? AND {REPLACEABLE_BATCH}""",
-                (source_url, job_id, *replacement_window())).rowcount
+                spec=json_set(spec,'$.source_url',?,'$.trim_locally',COALESCE(?,json_extract(spec,'$.trim_locally')))
+                WHERE id=? AND {REPLACEABLE_BATCH}""", (source_url, original, job_id, *replacement_window())).rowcount
             if changed:
                 if staged is not None:
                     staged.replace(folder / 'source')

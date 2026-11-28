@@ -1,3 +1,4 @@
 boto3==1.44.12
+cryptography==50.0.0
 vosk==0.3.45
 yt-dlp[default]==2026.11.23
